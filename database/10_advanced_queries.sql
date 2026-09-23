@@ -1,0 +1,7 @@
+-- =====================================================================
+-- FORGE-X : Forensic Operations, Records, Governance & Evidence Exchange
+-- File   : 10_advanced_queries.sql
+-- Purpose: JOINs, GROUP BY/HAVING, Subqueries, CTEs, and Window functions
+-- Engine : MySQL 8.0+
+-- Status : PLACEHOLDER — structure phase only, no SQL logic written yet
+-- =====================================================================
