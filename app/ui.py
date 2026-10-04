@@ -36,6 +36,7 @@ NAV_SECTIONS = (
         NavItem("Chain of custody", "custody.index", "link-45deg"),
         NavItem("Examinations", "examinations.list_examinations", "clipboard-data"),
         NavItem("Reports", "reports.list_reports", "file-earmark-text"),
+        NavItem("Analytics", "analytics.index", "bar-chart-line"),
         NavItem("Search", "search.index", "search"),
     )),
     ("Administration", (

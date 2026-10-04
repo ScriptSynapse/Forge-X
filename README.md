@@ -18,7 +18,7 @@ All data in the project is synthetic. FORGE-X is a learning project, not a certi
 
 ## Project status
 
-The project is built in 15 phases. This package contains **Phases 1–12**.
+The project is built in 15 phases. This package contains **Phases 1–14**.
 
 | Phase | Content | Status |
 |---|---|---|
@@ -33,9 +33,9 @@ The project is built in 15 phases. This package contains **Phases 1–12**.
 | 9 | Evidence management | ✅ Verified |
 | 10 | Integrity and chain of custody | ✅ Verified |
 | 11 | Examinations, reports and PDF export | ✅ Verified |
-| 12 | User administration and audit logs | 🟡 Written; run the tests below to confirm |
-| 13 | Analytics and global search | ⬜ Pending |
-| 14 | Testing and security review | ⬜ Pending |
+| 12 | User administration and audit logs | ✅ Verified |
+| 13 | Analytics and global search | ✅ Verified |
+| 14 | Testing review and hardening | 🟡 Written; run the tests below to confirm |
 | 15 | Documentation and submission | ⬜ Pending |
 
 **About testing so far.** The code was written in an environment without MySQL, so the SQL scripts and the database tests have **not yet been run against a real MySQL server**. The non-database Flask tests were run there using small stand-ins for Flask-WTF, WTForms and mysql-connector. The steps below include verification scripts. Run them and record the actual results before relying on any phase.
@@ -71,6 +71,8 @@ Forge-X/
 │   ├── auth/                Login, logout, signup, account, password change, decorators
 │   ├── users/               Users & roles administration (search, inactive accounts, requests, roles, status)
 │   ├── audit_logs/          Audit log timeline, CSV export and security view (/audit-logs)
+│   ├── search/              Global search (/search): records, exact-ID jump, SHA-256 prefix search
+│   ├── analytics/           Seven SQL analytics charts with their queries shown (/analytics)
 │   ├── dashboard/           Dashboard page and chart JSON endpoints (/api/dashboard/...)
 │   ├── cases/               Case list, create, details (tabs), edit, status, investigators, closure
 │   ├── evidence/            Evidence registry, register, details (hashes, custody timeline), edit
@@ -217,7 +219,7 @@ Open http://127.0.0.1:5000 and log in as `paulson`. You land on the dashboard.
 pytest -v
 ```
 
-**Expect about 91 passed and 30 skipped.** The exact split depends on your data.
+**Expect about 147 passed and 30 skipped.** What each test proves, the security test matrix and a manual acceptance checklist are in **[docs/TESTING.md](docs/TESTING.md)**. The exact split depends on your data.
 
 * 6 tests skip because they check specific demo records, or need an evidence hash to test against. The skip reason says "demo data not installed" or "empty lab".
 * 24 are the opt-in workflow tests described below.
@@ -229,6 +231,9 @@ With the demo data installed instead (`install_demo.sql`), more tests run.
 ```cmd
 set FORGE_X_DB_WRITE_TESTS=1
 pytest tests\test_auth_db.py tests\test_cases_write_db.py tests\test_evidence_write_db.py tests\test_integrity_custody_write_db.py tests\test_exams_reports_write_db.py tests\test_audit_write_db.py -v
+
+rem or, equivalently, every opt-in test at once:
+pytest -m db_write -v
 set FORGE_X_DB_WRITE_TESTS=
 ```
 
@@ -348,6 +353,25 @@ Every figure is computed by a MySQL query when the page loads. Nothing is hard-c
   * actions refused in the last 7 days
 * **Audit records can't be changed.** Triggers block edits and deletions, and the app's MySQL account has no UPDATE or DELETE permission on these tables.
 * **Users & roles** has search, role and status filters, pagination, and an *inactive accounts* view (deactivated, never logged in, or no login for 30 days). It also lists recently reviewed access requests and shows each user's full, paginated activity history.
+
+## Search and analytics
+
+* **Global search** works from the top bar on every page.
+  * It covers case references and titles; evidence IDs, descriptions and sites; examination codes, types and findings; report codes and titles; and, for administrators, users.
+  * Typing a complete ID such as `FX-EV-2026-00001` opens that record directly, but only if you're allowed to see it.
+  * 8 to 64 hexadecimal characters also search **recorded SHA-256 hashes** by prefix, including superseded ones, using index `idx_hashes_value`.
+  * Investigators only ever find records from their own cases.
+* **Analytics** (`/analytics`) has seven charts for the last 6, 12 or 24 months. Each is one SQL query, and **"SQL behind this chart"** shows it for the viva:
+
+| Chart | SQL concepts |
+|---|---|
+| Lab activity per month | Recursive CTE, LEFT JOIN to grouped subqueries |
+| Hash verification outcomes | Recursive CTE, conditional aggregation |
+| Average days to close, by case type | AVG, TIMESTAMPDIFF, GROUP BY |
+| Examinations by type and status | Pivot with conditional aggregation |
+| Investigator workload | Window function `RANK() OVER`, correlated subquery, HAVING |
+| Custody actions in the period | Date-range filter, `FIELD()` ordering |
+| Items at each storage location | LEFT JOIN that keeps empty locations |
 
 ## Hosting on the internet (Cloudflare Tunnel)
 

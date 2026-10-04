@@ -1,0 +1,55 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}Search{% endblock %}
+{% macro group(key, title, rows_total, see_all=None) -%}
+<section class="fx-card" aria-labelledby="g-{{ key }}">
+  <div class="fx-card-h"><h2 id="g-{{ key }}">{{ title }} <span class="fx-count">{{ rows_total }}</span></h2>
+    {% if see_all and rows_total > 8 %}<a class="small" href="{{ see_all }}">See all {{ rows_total }}</a>{% endif %}</div>
+  {{ caller() }}
+</section>
+{%- endmacro %}
+{% block content %}
+{{ ui.page_header("Search", "Case references, evidence IDs, examination and report codes, titles, descriptions and SHA-256 hashes.") }}
+<form method="get" class="fx-card fx-card-b d-flex gap-2" role="search">
+  <label class="visually-hidden" for="s-q">Search FORGE-X</label>
+  <input id="s-q" name="q" type="search" class="fx-input" value="{{ q }}" placeholder="e.g. FX-EV-2026-00001, ransomware, or the first 8+ characters of a hash" autofocus>
+  <button class="fx-btn fx-btn-primary" type="submit">Search</button>
+</form>
+
+{% if too_short %}<p class="fx-muted m-0">Type at least 2 characters.</p>
+{% elif results is none %}<p class="fx-muted m-0">Typing a complete ID such as <span class="fx-mono">FX-2026-0001</span> opens that record directly.</p>
+{% elif total == 0 %}{{ ui.empty_state("Nothing found for \"" ~ q ~ "\"", "Only records from cases you can see are searched.") }}
+{% else %}
+<p class="fx-muted m-0">{{ total }} result{{ "s" if total != 1 }} for <strong>"{{ q }}"</strong>. Only records from cases you can see are included.</p>
+
+{% if results.hashes and results.hashes.total %}
+{% call group("hashes", "Recorded SHA-256 hashes", results.hashes.total) %}
+<ul class="fx-hash-list">{% for h in results.hashes.rows %}
+  <li><div class="d-flex flex-wrap gap-2 align-items-center"><a class="fx-mono" href="{{ url_for('evidence.detail', code=h.evidence_code, tab='hashes') }}">{{ h.evidence_code }}</a>
+    <span class="fx-muted small">{{ h.description }}</span>{% if h.superseded %}<span class="fx-badge b-slate">Superseded</span>{% else %}<span class="fx-badge b-cyan">Current</span>{% endif %}
+    <span class="fx-mono fx-muted small ms-auto">recorded {{ h.recorded_at|datetime }}</span></div>
+    <code class="fx-hash">{{ h.hash_value }}</code></li>{% endfor %}</ul>
+{% endcall %}
+{% endif %}
+
+{% if results.cases.total %}{% call group("cases", "Cases", results.cases.total, url_for('cases.list_cases', q=q)) %}
+<ul class="fx-result-list">{% for c in results.cases.rows %}<li><a class="fx-mono" href="{{ url_for('cases.detail', reference=c.case_reference) }}">{{ c.case_reference }}</a>
+  <span>{{ c.title }}</span>{{ ui.priority(c.priority) }}{{ ui.badge(c.status) }}</li>{% endfor %}</ul>{% endcall %}{% endif %}
+
+{% if results.evidence.total %}{% call group("evidence", "Evidence", results.evidence.total, url_for('evidence.list_evidence', q=q)) %}
+<ul class="fx-result-list">{% for e in results.evidence.rows %}<li><a class="fx-mono" href="{{ url_for('evidence.detail', code=e.evidence_code) }}">{{ e.evidence_code }}</a>
+  <span>{{ e.description }}</span><span class="fx-mono fx-muted small">{{ e.case_reference }}</span>{{ ui.badge(e.current_status) }}</li>{% endfor %}</ul>{% endcall %}{% endif %}
+
+{% if results.examinations.total %}{% call group("examinations", "Examinations", results.examinations.total) %}
+<ul class="fx-result-list">{% for x in results.examinations.rows %}<li><a class="fx-mono" href="{{ url_for('examinations.detail', code=x.examination_code) }}">{{ x.examination_code }}</a>
+  <span>{{ x.type_name }}</span><span class="fx-mono fx-muted small">{{ x.case_reference }}</span>{{ ui.badge(x.status) }}</li>{% endfor %}</ul>{% endcall %}{% endif %}
+
+{% if results.reports.total %}{% call group("reports", "Reports", results.reports.total) %}
+<ul class="fx-result-list">{% for r in results.reports.rows %}<li><a class="fx-mono" href="{{ url_for('reports.detail', code=r.report_code) }}">{{ r.report_code }}</a>
+  <span>{{ r.title }}</span><span class="fx-mono fx-muted small">{{ r.case_reference }}</span>{{ ui.badge(r.status) }}</li>{% endfor %}</ul>{% endcall %}{% endif %}
+
+{% if results.users and results.users.total %}{% call group("users", "Users", results.users.total, url_for('users.index', q=q)) %}
+<ul class="fx-result-list">{% for u in results.users.rows %}<li><a href="{{ url_for('users.detail', user_id=u.user_id) }}">{{ u.full_name }}</a>
+  <span class="fx-mono fx-muted small">{{ u.username }}</span>{{ ui.badge(u.account_status) }}</li>{% endfor %}</ul>{% endcall %}{% endif %}
+{% endif %}
+{% endblock %}

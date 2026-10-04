@@ -1,0 +1,43 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}Analytics{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">{% endblock %}
+{% block content %}
+{% call ui.page_header("Analytics", scope.label ~ ". Every chart is one SQL query run when the page loads; open \"SQL behind this chart\" to see it.") %}
+  <form method="get" class="d-flex gap-2 align-items-end">
+    <div><label class="fx-label" for="a-months">Period</label>
+      <select id="a-months" name="months" class="fx-input">{% for p in periods %}<option value="{{ p }}" {% if p == months %}selected{% endif %}>Last {{ p }} months</option>{% endfor %}</select></div>
+    <button class="fx-btn fx-btn-secondary" type="submit">Apply</button>
+  </form>
+{% endcall %}
+
+<section aria-label="Charts" class="fx-chart-grid">
+  {% for c in charts %}
+  <article class="fx-card fx-chart-card">
+    <div class="fx-card-h"><h2 id="chart-{{ c.id }}-h">{{ c.title }}</h2><span class="fx-muted small" data-fx-total></span></div>
+    <div class="fx-card-b fx-chart" data-fx-analytics="{{ c.kind }}" aria-labelledby="chart-{{ c.id }}-h"
+         data-endpoint="{{ url_for('analytics.chart_data', chart_id=c.id, months=months) }}">
+      <p class="fx-muted small mt-0">{{ c.description }}</p>
+      <div class="fx-chart-state" data-state="loading" aria-busy="true">
+        <span class="fx-skeleton" style="height:14px;width:70%"></span><span class="fx-skeleton" style="height:14px;width:90%"></span>
+        <span class="fx-muted small">Running the query…</span></div>
+      <div class="fx-chart-state" data-state="empty" hidden><p class="fw-semibold mb-1">No data for this period</p>
+        <p class="fx-muted small mb-0">The chart fills in as records are added.</p></div>
+      <div class="fx-chart-state" data-state="error" hidden><p class="fw-semibold mb-1 text-danger-emphasis">The chart couldn't be loaded</p>
+        <p class="fx-muted small mb-2" data-fx-error-text>The server didn't respond.</p>
+        <button type="button" class="fx-btn fx-btn-secondary fx-btn-sm" data-fx-retry>Try again</button></div>
+      <div class="fx-chart-canvas" data-state="ready" hidden><canvas role="img"></canvas></div>
+      <table class="visually-hidden" data-fx-table><caption>{{ c.title }}</caption><thead></thead><tbody></tbody></table>
+    </div>
+    <details class="fx-sql">
+      <summary>SQL behind this chart <span class="fx-muted">({{ c.concepts }})</span></summary>
+      <pre><code>{{ c.sql }}</code></pre>
+    </details>
+  </article>
+  {% endfor %}
+</section>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/chartjs/chart.umd.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/analytics.js') }}" defer></script>
+{% endblock %}

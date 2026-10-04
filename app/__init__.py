@@ -7,7 +7,7 @@ different settings, and keeps setup in one readable place.
 import logging
 
 from dotenv import load_dotenv
-from flask import Flask
+from flask import Flask, request
 from flask_wtf.csrf import CSRFProtect
 
 from . import db
@@ -66,6 +66,7 @@ def create_app(config=None):
 
 def _register_blueprints(app):
     # Each later phase adds its blueprint here (auth, dashboard, cases, ...).
+    from .analytics.routes import bp as analytics_bp
     from .audit_logs.routes import bp as audit_bp
     from .auth.routes import bp as auth_bp
     from .cases.routes import bp as cases_bp
@@ -77,6 +78,7 @@ def _register_blueprints(app):
     from .locations.routes import bp as locations_bp
     from .public.routes import bp as public_bp
     from .reports.routes import bp as reports_bp
+    from .search.routes import bp as search_bp
     from .system.routes import bp as system_bp
     from .users.routes import bp as users_bp
 
@@ -93,6 +95,8 @@ def _register_blueprints(app):
     app.register_blueprint(examinations_bp)  # Phase 11
     app.register_blueprint(reports_bp)       # Phase 11
     app.register_blueprint(audit_bp)         # Phase 12
+    app.register_blueprint(search_bp)        # Phase 13
+    app.register_blueprint(analytics_bp)     # Phase 13
 
 
 def _register_security_headers(app):
@@ -103,9 +107,16 @@ def _register_security_headers(app):
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "same-origin")
         response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-        if response.mimetype == "text/html":
-            # Pages can contain case details: do not keep them in shared caches.
+        if response.mimetype in ("text/html", "application/json"):
+            # Pages and chart data can contain case details: never keep them in
+            # browser or shared caches (the Back button after logout shows nothing).
             response.headers.setdefault("Cache-Control", "no-store")
+        # A hosted FORGE-X (Cloudflare Tunnel) must not appear in search engines.
+        response.headers.setdefault("X-Robots-Tag", "noindex, nofollow")
+        if request.is_secure:
+            # Over HTTPS, tell browsers to use HTTPS only for the next 180 days.
+            # (Never sent over plain http, so local development is unaffected.)
+            response.headers.setdefault("Strict-Transport-Security", "max-age=15552000")
         return response
 
 
