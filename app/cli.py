@@ -4,7 +4,7 @@ from flask import current_app
 
 from . import audit
 from .auth.passwords import hash_password, password_problems
-from .db import (EXPECTED_OBJECTS, DatabaseError, can_delete_audit_logs, check_connection, query_one,
+from .db import (EXPECTED_OBJECTS, DatabaseError, can_delete_audit_logs, check_connection, execute, query_one,
                  query_value, transaction, triggers_active)
 
 MIN_VERSION = (8, 0, 16)
@@ -58,6 +58,14 @@ def register_cli(app):
             "AND TABLE_NAME = 'users' AND COLUMN_NAME = 'session_version'")
         report(bool(has_column), "users.session_version column (Phase 6)",
                "present" if has_column else "missing: run database/migrations/001_add_session_version.sql as root")
+
+        try:
+            execute("DELETE FROM cases WHERE 1 = 0")       # matches nothing; only the privilege is tested
+            can_delete_cases = True
+        except DatabaseError:
+            can_delete_cases = False
+        report(can_delete_cases, "Delete empty cases (DELETE on cases)",
+               "granted" if can_delete_cases else "missing: run database/migrations/003_allow_case_delete.sql as root")
 
         has_location_audit = query_value(
             "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() "
@@ -172,3 +180,26 @@ def register_cli(app):
             click.echo(click.style("That username or email is already in use.", fg="red"))
             raise SystemExit(1)
         click.echo(click.style(f"Administrator {username} created. Log in at http://127.0.0.1:5000/login", fg="green"))
+
+
+    @app.cli.command("seed-mock")
+    @click.option("--admin", "admin_username", default="paulson", show_default=True,
+                  help="The administrator who registers the cases and approves the report.")
+    def seed_mock(admin_username):
+        """Add Shreya, Prachiti and Sejal plus six mock cases (synthetic data).
+
+        Safe to run again: each step checks whether it is already done, so a
+        rerun finishes an interrupted run instead of duplicating anything.
+        Everything goes through the normal stored procedures and services.
+        """
+        from .mockdata import MockDataError, seed
+        click.echo("Adding mock data...")
+        try:
+            created = seed(app, admin_username, log=click.echo)
+        except MockDataError as err:
+            click.echo(click.style(str(err), fg="red"))
+            raise SystemExit(1)
+        click.echo(click.style("Done. Temporary passwords (shown only now; each person must change it at first login):",
+                               fg="green"))
+        for username, (_uid, password, role) in created.items():
+            click.echo(f"  {username:10} {password or '(unchanged: already in use)'}   ({role})")

@@ -5,6 +5,7 @@
 <nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('users.index') }}">Users &amp; roles</a><span aria-hidden="true">/</span><span aria-current="page">{{ user.username }}</span></nav>
 {% call ui.page_header(user.full_name, user.email) %}
   {{ ui.badge(user.account_status) }}
+  <a class="fx-btn fx-btn-secondary" href="{{ url_for('users.edit', user_id=user.user_id) }}">Edit details</a>
   {% if not is_self %}
   <form method="post" action="{{ url_for('users.set_status', user_id=user.user_id) }}"
         data-fx-confirm="{{ 'Deactivate this account? The user will be signed out immediately.' if user.account_status == 'Active' else 'Activate this account?' }}">

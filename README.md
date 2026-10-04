@@ -18,7 +18,7 @@ All data in the project is synthetic. FORGE-X is a learning project, not a certi
 
 ## Project status
 
-The project is built in 15 phases. This package contains **Phases 1–14**.
+The project is built in 15 phases. This package contains **all 15 phases**.
 
 | Phase | Content | Status |
 |---|---|---|
@@ -36,7 +36,7 @@ The project is built in 15 phases. This package contains **Phases 1–14**.
 | 12 | User administration and audit logs | ✅ Verified |
 | 13 | Analytics and global search | ✅ Verified |
 | 14 | Testing review and hardening | 🟡 Written; run the tests below to confirm |
-| 15 | Documentation and submission | ⬜ Pending |
+| 15 | Documentation and final delivery | ✅ Delivered |
 
 **About testing so far.** The code was written in an environment without MySQL, so the SQL scripts and the database tests have **not yet been run against a real MySQL server**. The non-database Flask tests were run there using small stand-ins for Flask-WTF, WTForms and mysql-connector. The steps below include verification scripts. Run them and record the actual results before relying on any phase.
 
@@ -102,7 +102,10 @@ Forge-X/
 │   ├── app_user.sql         Least-privilege MySQL account (edit password first)
 │   └── migrations/          001 (before Phase 6) and 002 (before Phase 9): run only on older databases
 ├── tests/                   pytest suite
-├── tools/fetch_vendor.py    Downloads Bootstrap, icons, Chart.js and fonts locally
+├── docs/                    User guide, data dictionary, testing, viva guide, Cloudflare hosting
+├── tools/
+│   ├── fetch_vendor.py      Downloads Bootstrap, icons, Chart.js and fonts locally
+│   └── make_data_dictionary.py  Generates docs/DATA_DICTIONARY.md from schema.sql
 ├── .env.example
 ├── .gitignore
 ├── pytest.ini
@@ -219,7 +222,7 @@ Open http://127.0.0.1:5000 and log in as `paulson`. You land on the dashboard.
 pytest -v
 ```
 
-**Expect about 147 passed and 30 skipped.** What each test proves, the security test matrix and a manual acceptance checklist are in **[docs/TESTING.md](docs/TESTING.md)**. The exact split depends on your data.
+**Expect about 149 passed and 35 skipped.** What each test proves, the security test matrix and a manual acceptance checklist are in **[docs/TESTING.md](docs/TESTING.md)**. The exact split depends on your data.
 
 * 6 tests skip because they check specific demo records, or need an evidence hash to test against. The skip reason says "demo data not installed" or "empty lab".
 * 24 are the opt-in workflow tests described below.
@@ -242,6 +245,7 @@ set FORGE_X_DB_WRITE_TESTS=
 ```cmd
 mysql -u root -p -e "source database/migrations/001_add_session_version.sql"
 mysql -u root -p -e "source database/migrations/002_audit_storage_location.sql"
+mysql -u root -p -e "source database/migrations/003_allow_case_delete.sql"
 ```
 
 ## Dashboard figures
@@ -276,10 +280,12 @@ Every figure is computed by a MySQL query when the page loads. Nothing is hard-c
 | Register a case | Administrators (they choose the lead) and investigators (they become the lead) |
 | Edit, change status, manage investigators, close | An administrator or the case's lead investigator |
 | Anything on a closed case | Nobody: closed cases are read-only (decision D3), enforced by Flask and by a database trigger |
+| Delete a case | Administrators, and only a case with no evidence, examinations or reports that isn't closed (decision D7) |
 
 * **Case references** such as `FX-2026-0025` are generated inside the database by `sp_register_case`, in the same transaction as the lead assignment.
 * **Editing is protected against lost updates.** The edit form carries the case's last-updated time. If someone else saved in between, your save is refused and nothing is overwritten.
 * **Closing** goes through `sp_close_case`. It refuses while examinations are Pending or In Progress, or evidence is out of storage.
+* **Deleting** a case registered by mistake removes the case and its investigator assignments in one transaction. It needs a reason and the case reference typed to confirm, and the audit log keeps the reference, title and reason. RESTRICT foreign keys refuse the delete if anything was linked to the case meanwhile.
 * **Audit records:** every change is written to `audit_logs`. Refused actions are recorded with outcome Denied.
 
 ## Evidence rules
@@ -353,6 +359,65 @@ Every figure is computed by a MySQL query when the page loads. Nothing is hard-c
   * actions refused in the last 7 days
 * **Audit records can't be changed.** Triggers block edits and deletions, and the app's MySQL account has no UPDATE or DELETE permission on these tables.
 * **Users & roles** has search, role and status filters, pagination, and an *inactive accounts* view (deactivated, never logged in, or no login for 30 days). It also lists recently reviewed access requests and shows each user's full, paginated activity history.
+
+## Mock data, editing people, deleting cases
+
+**Mock data.** One command adds three people and six synthetic cases. Everything is created through the normal stored procedures, so it follows every rule and appears in the audit log. It is safe to run again: a rerun finishes an interrupted run and never duplicates anything.
+
+```cmd
+flask --app run seed-mock
+```
+
+| Person | Username | Role |
+|---|---|---|
+| Shreya | `shreya` | Investigator (leads most cases) |
+| Prachiti | `prachiti` | Evidence Custodian (registers and moves evidence) |
+| Sejal | `sejal` | Read-Only Auditor |
+
+Each person's temporary password is printed once; they must change it at first login. On a rerun, people who have never logged in get a fresh temporary password; anyone who has logged in keeps theirs. The cases include:
+
+* a ransomware case with evidence, hash checks, custody moves, a completed examination and an approved report
+* a phishing case with a failed and then passed hash check, and a pending examination
+* an item still in transit
+* a closed case
+* two empty cases that can be used to demonstrate deletion
+
+**Editing people.** Administrators: **Users & roles → a person → Edit details** changes the full name, email or username. Every change is audited. Roles, status and passwords have their own buttons on the same page.
+
+**Deleting cases.** Administrators can delete a case registered by mistake: **case page → Overview → Delete case**, with a reason and the case reference typed to confirm. This works only when the case has **no evidence, examinations or reports** and is not closed. Those records are forensic history, which FORGE-X never deletes, so close such a case instead. The audit log keeps the deleted case's reference, title and the reason.
+
+On a database built before this feature, run this once as root. `flask --app run check-db` tells you if it's missing:
+
+```cmd
+mysql -u root -p -e "source database/migrations/003_allow_case_delete.sql"
+```
+
+## Changes after the 15 phases
+
+| Change | Summary |
+|---|---|
+| Mock data | `flask --app run seed-mock` adds Shreya, Prachiti and Sejal and six synthetic cases through the normal procedures; safe to rerun |
+| Editing people | Administrators correct a person's name, email or username (**Users & roles → Edit details**), audited |
+| Deleting empty cases | Administrators delete a case registered by mistake, if it has no forensic history (D7). Needs migration 003 on older databases |
+| Locking-read fix | Hash recording/verification and the "keep one administrator" check used locking reads on tables the app account can't lock (MySQL error 1142). Fixed, and a test now checks every locking read against the grants (D8) |
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| **Project report** | The academic report (separate document, exportable to Word or PDF) |
+| [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | How each role uses FORGE-X |
+| [docs/DATA_DICTIONARY.md](docs/DATA_DICTIONARY.md) | Every table, column, key and CHECK constraint, generated from `schema.sql` |
+| [docs/TESTING.md](docs/TESTING.md) | Test inventory, security test matrix, manual acceptance checklist |
+| [docs/VIVA_GUIDE.md](docs/VIVA_GUIDE.md) | Likely viva questions, with answers and where to show the proof |
+| [docs/DEPLOY_CLOUDFLARE.md](docs/DEPLOY_CLOUDFLARE.md) | Publishing FORGE-X through Cloudflare Tunnel |
+| `database/sample_queries.sql` | 32 explained SQL queries with expected results (demo data) |
+
+The data dictionary is generated, never edited by hand. After changing `schema.sql`, regenerate it:
+
+```cmd
+python tools\make_data_dictionary.py
+```
 
 ## Search and analytics
 
@@ -435,6 +500,8 @@ To return to the single-administrator lab, run `install_all.sql` and `create-adm
 | D4 | Unassigning an investigator deletes the assignment row; the audit log keeps the history |
 | D5 | Role changes are audited by a database trigger, not by Flask |
 | D6 | Reports need an approver other than the author |
+| D7 | Only empty cases (no evidence, examinations or reports, not closed) can be deleted, by administrators; everything with forensic history is closed instead |
+| D8 | Locking reads (`SELECT ... FOR UPDATE`) are used only on tables where the app account has UPDATE or DELETE, because MySQL 8.0.22+ requires it; append-only tables are protected by locking the parent `evidence` row instead |
 | A3 | Password recovery is admin-assisted (temporary password); there is no email reset |
 | A5 | Notifications are deferred |
 | A6 | Verification sample files are hashed and discarded, up to 25 MB |

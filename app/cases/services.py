@@ -5,7 +5,8 @@ from dataclasses import dataclass
 
 from .. import audit
 from ..access import Scope, can_manage_case
-from ..db import BusinessRuleError, call_proc, query_all, query_one, query_value, transaction
+from ..db import (BusinessRuleError, ConstraintViolation, DatabaseError, call_proc, query_all, query_one,
+                  query_value, transaction)
 from ..pagination import Page
 
 CASE_STATUSES = ("Open", "In Progress", "On Hold", "Closed")
@@ -348,3 +349,64 @@ def close_case(case_id, summary, by_user_id):
     _run_procedure("sp_close_case", (case_id, summary, by_user_id))
 
 
+
+
+_BLOCKERS_SQL = (
+    "SELECT c.status, "
+    "(SELECT COUNT(*) FROM evidence e WHERE e.case_id = c.case_id) AS evidence, "
+    "(SELECT COUNT(*) FROM examinations x WHERE x.case_id = c.case_id) AS examinations, "
+    "(SELECT COUNT(*) FROM forensic_reports r WHERE r.case_id = c.case_id) AS reports "
+    "FROM cases c WHERE c.case_id = %s")
+
+
+def _blockers(row):
+    if row is None:
+        return ["The case doesn't exist."]
+    names = {"evidence": ("evidence item", "evidence items"), "examinations": ("examination", "examinations"),
+             "reports": ("report", "reports")}
+    parts = [f"{int(row[k])} {names[k][int(row[k]) != 1]}" for k in names if int(row[k])]
+    reasons = [f"It has {', '.join(parts)}."] if parts else []
+    if row["status"] == "Closed":
+        reasons.append("It is closed, and closure is part of the record.")
+    return reasons
+
+
+def deletion_blockers(case_id):
+    """Why a case can't be deleted (empty list = it can be).
+
+    Only a case with NO forensic history may be deleted: one registered by
+    mistake or twice. Evidence, examinations and reports are history that
+    must survive; the database's RESTRICT foreign keys enforce the same rule.
+    """
+    return _blockers(query_one(_BLOCKERS_SQL, (case_id,)))
+
+
+def delete_case(case_id, user, reason, typed_reference):
+    """Delete an EMPTY case: its investigator assignments, then the case, plus
+    an audit record that keeps its reference, title and the reason. One
+    transaction; refused if anything was added to the case meanwhile."""
+    if "Administrator" not in user["roles"]:
+        raise CaseActionError("Only administrators can delete cases.")
+    if not reason or len(reason.strip()) < 10:
+        raise CaseActionError("Give a reason of at least 10 characters.")
+    try:
+        with transaction() as cur:
+            case = _lock_case(cur, case_id)
+            if typed_reference.strip().upper() != case["case_reference"]:
+                raise CaseActionError(f"Type {case['case_reference']} exactly to confirm.")
+            cur.execute(_BLOCKERS_SQL, (case_id,))    # same transaction, after the lock
+            blockers = _blockers(cur.fetchone())
+            if blockers:
+                raise CaseActionError("This case can't be deleted. " + " ".join(blockers) + " Close it instead.")
+            cur.execute("DELETE FROM case_investigators WHERE case_id = %s", (case_id,))
+            cur.execute("DELETE FROM cases WHERE case_id = %s", (case_id,))
+            audit.record("case.delete", "Case", case["case_reference"], cursor=cur,
+                         details=f"Deleted empty case '{case['title']}'. Reason: {reason.strip()}"[:500])
+    except ConstraintViolation as err:          # a RESTRICT foreign key: something was linked after all
+        raise CaseActionError("The database refused: this case is referenced by other records. Close it instead.") from err
+    except DatabaseError as err:
+        if err.errno == 1142:                    # DELETE privilege missing on an older installation
+            raise CaseActionError("Deleting cases needs a one-time database update: "
+                                  "run database/migrations/003_allow_case_delete.sql as root.") from err
+        raise
+    return case["case_reference"]

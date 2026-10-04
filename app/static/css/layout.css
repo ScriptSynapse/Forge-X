@@ -218,3 +218,6 @@
 .fx-sql summary { cursor: pointer; font-size: 13px; color: var(--fx-text-2); }
 .fx-sql pre { margin: 10px 0 0; padding: 12px; background: var(--fx-bg-2); border: 1px solid var(--fx-border-soft); border-radius: 6px;
   font-size: 12px; line-height: 1.5; color: #C9D5E3; max-height: 320px; overflow: auto; white-space: pre; }
+
+/* Delete-case section */
+.fx-danger-zone { border-color: rgba(240, 82, 82, 0.45); }

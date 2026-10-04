@@ -133,6 +133,26 @@
   </div>
 </div>
 
+{% if delete_form is defined %}
+<section class="fx-card fx-danger-zone" aria-labelledby="delete-h">
+  <div class="fx-card-h"><h2 id="delete-h">Delete case</h2><span class="fx-muted small">Administrators only</span></div>
+  <div class="fx-card-b">
+  {% if delete_blockers %}
+    <p class="m-0">This case can't be deleted. {{ delete_blockers|join(" ") }} Evidence, examinations and reports are forensic history, which FORGE-X never deletes. Close the case instead.</p>
+  {% else %}
+    <p class="mt-0">Use this only for a case registered by mistake or twice. It has no evidence, examinations or reports. The audit log keeps its reference, title and your reason.</p>
+    <form method="post" action="{{ url_for('cases.delete', reference=case.case_reference) }}" novalidate class="d-flex flex-column gap-3 fx-narrow"
+          data-fx-confirm="Delete {{ case.case_reference }} permanently?">
+      {{ delete_form.hidden_tag() }}
+      {{ ui.field(delete_form.reason) }}
+      {{ ui.field(delete_form.confirm_reference, help="Type " ~ case.case_reference ~ " exactly.", extra_class="fx-mono") }}
+      <div><button class="fx-btn fx-btn-danger" type="submit">Delete case</button></div>
+    </form>
+  {% endif %}
+  </div>
+</section>
+{% endif %}
+
 {% elif tab == "evidence" %}
 <section class="fx-card">
   <div class="fx-card-h"><h2>Evidence</h2>

@@ -6,7 +6,7 @@ from ..access import Scope, can_create_case, can_manage_case, can_register_evide
 from ..auth.decorators import login_required
 from ..pagination import parse_page
 from . import services
-from .forms import AssignForm, CaseForm, CloseForm, StatusForm
+from .forms import AssignForm, CaseForm, CloseForm, DeleteCaseForm, StatusForm
 
 bp = Blueprint("cases", __name__, url_prefix="/cases")
 
@@ -112,7 +112,31 @@ def detail(reference):
         assign_form.user_id.choices = [(u["user_id"], u["full_name"]) for u in services.active_investigators()
                                        if u["user_id"] not in assigned]
         context.update(status_form=status_form, assign_form=assign_form)
+    if is_admin(g.user) and tab == "overview":
+        context.update(delete_blockers=services.deletion_blockers(case["case_id"]), delete_form=DeleteCaseForm())
     return render_template("cases/detail.html", **context)
+
+
+@bp.post("/<reference>/delete")
+@login_required
+def delete(reference):
+    case = services.get_case(Scope(g.user), reference)
+    if case is None:
+        abort(404)
+    if not is_admin(g.user):
+        audit.record("access.denied", "Case", reference, outcome="Denied", details="delete case")
+        abort(403)
+    form = DeleteCaseForm()
+    if not form.validate_on_submit():
+        flash("Give a reason (at least 10 characters) and type the case reference to confirm.", "danger")
+        return redirect(url_for("cases.detail", reference=reference))
+    try:
+        services.delete_case(case["case_id"], g.user, form.reason.data, form.confirm_reference.data)
+    except services.CaseActionError as err:
+        flash(str(err), "danger")
+        return redirect(url_for("cases.detail", reference=reference))
+    flash(f"Case {reference} deleted. The audit log keeps a record of it and of the reason.", "success")
+    return redirect(url_for("cases.list_cases"))
 
 
 @bp.route("/<reference>/edit", methods=["GET", "POST"])

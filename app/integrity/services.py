@@ -23,9 +23,17 @@ def is_assigned(user_id, case_id):
 
 
 def _current_hash(cur, evidence_id):
+    """The item's current reference hash. Call only after _lock_item().
+
+    Deliberately a plain SELECT, not FOR UPDATE: MySQL 8.0.22+ requires UPDATE
+    or DELETE privilege for a locking read, and the application account has
+    neither on the append-only evidence_hashes table. It isn't needed either:
+    every change to an item's hashes first locks that item's evidence row
+    (_lock_item), so they take turns, and this read happens after the lock,
+    so it sees every hash committed before it."""
     cur.execute(
         "SELECT h.hash_id, h.hash_value FROM evidence_hashes h WHERE h.evidence_id = %s "
-        "AND NOT EXISTS (SELECT 1 FROM evidence_hashes s WHERE s.supersedes_hash_id = h.hash_id) FOR UPDATE",
+        "AND NOT EXISTS (SELECT 1 FROM evidence_hashes s WHERE s.supersedes_hash_id = h.hash_id)",
         (evidence_id,),
     )
     return cur.fetchone()

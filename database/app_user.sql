@@ -65,6 +65,10 @@ GRANT INSERT, UPDATE ON forge_x_db.forensic_reports    TO 'forge_x_app_role';
 GRANT INSERT, UPDATE, DELETE ON forge_x_db.user_roles         TO 'forge_x_app_role';
 GRANT INSERT, UPDATE, DELETE ON forge_x_db.case_investigators TO 'forge_x_app_role';
 
+-- Deleting a case registered by mistake (only when it has no evidence,
+-- examinations or reports: the RESTRICT foreign keys refuse otherwise).
+GRANT DELETE ON forge_x_db.cases TO 'forge_x_app_role';
+
 -- The roles table is fixed reference data: SELECT only (granted above).
 
 CREATE USER 'forge_x_app'@'localhost' IDENTIFIED BY 'CHANGE_ME_App#Passw0rd_2026';

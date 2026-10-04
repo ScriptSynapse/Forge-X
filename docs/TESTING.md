@@ -1,6 +1,6 @@
 # FORGE-X: Testing and Quality Review
 
-This document explains how FORGE-X is tested, what each test proves, and what the Phase 14 review found and fixed. FORGE-X has **177 automated tests**, a **40-check SQL verification script**, and the manual acceptance checklist in section 5.
+This document explains how FORGE-X is tested, what each test proves, and what the Phase 14 review found and fixed. FORGE-X has **184 automated tests**, a **40-check SQL verification script**, and the manual acceptance checklist in section 5.
 
 ---
 
@@ -11,12 +11,12 @@ Run everything from the project folder in Command Prompt, with `.venv` active.
 | What | Command | Expected result |
 |---|---|---|
 | Configuration and database connection | `flask --app run check-db` | `All checks passed.` |
-| All automated tests | `pytest -v` | About **147 passed, 30 skipped**; the exact split depends on your data |
+| All automated tests | `pytest -v` | About **149 passed, 35 skipped**; the exact split depends on your data |
 | Database build verification | runs automatically at the end of `install_all.sql` | `failed 0` |
 | Full SQL suite (needs the demo data) | runs automatically at the end of `install_demo.sql` | **40 / 40 PASS** |
 
 **Skipped is not the same as passed.**
-* **24 skips** are the opt-in tests that *write* to the database (section 2). They are skipped by design.
+* **29 skips** are the opt-in tests that *write* to the database (section 2). They are skipped by design.
 * **About 6 skips** are tests that check specific demo records when the demo data isn't installed. Their skip reason says so.
 * **Any other skip** means MySQL wasn't reachable; the reason is printed.
 
@@ -37,15 +37,16 @@ set FORGE_X_DB_WRITE_TESTS=
 | Application factory, configuration, errors | `test_app.py` (15) | `test_db.py` (10) | |
 | Authentication and sessions | `test_auth.py` (8) | | `test_auth_db.py` (10) |
 | Dashboard | `test_dashboard.py` (6) | `test_dashboard_db.py` (6) | |
-| Cases | `test_cases.py` (6) | `test_cases_db.py` (5) | `test_cases_write_db.py` (5) |
+| Cases | `test_cases.py` (7) | `test_cases_db.py` (5) | `test_cases_write_db.py` (5) |
+| Editing people, deleting cases | | | `test_people_write_db.py` (5) |
 | Evidence | `test_evidence.py` (5) | `test_evidence_db.py` (7) | `test_evidence_write_db.py` (4) |
 | Integrity and custody | `test_integrity.py` (7) | `test_custody_db.py` (3) | `test_integrity_custody_write_db.py` (2) |
 | Examinations and reports, PDF | `test_exams_reports.py` (4) | `test_exams_reports_db.py` (4) | `test_exams_reports_write_db.py` (1, the full workflow) |
 | Audit logs, users | `test_audit.py` (4) | `test_audit_db.py` (4) | `test_audit_write_db.py` (2) |
 | Search and analytics | `test_search_analytics.py` (5) | `test_search_analytics_db.py` (10) | |
 | Hosting behind Cloudflare | `test_proxy.py` (3) | | |
-| **Whole-application security (Phase 14)** | `test_security.py` (7) | `test_privileges_db.py` (34) | |
-| **Total: 177** | **70** | **83** | **24** |
+| **Whole-application security (Phase 14)** | `test_security.py` (8) | `test_privileges_db.py` (34) | |
+| **Total: 184** | **72** | **83** | **29** |
 
 **How the three kinds of test work:**
 * **Offline tests** need no database. They cover rules, permissions, input parsing, hashing, PDF generation, security headers and the protection of every route.
@@ -68,7 +69,8 @@ set FORGE_X_DB_WRITE_TESTS=
 | Privilege escalation | Role checks in Flask **and** in stored procedures; self-assigned roles blocked by a CHECK constraint | `test_auth*`, `test_cases*`, `test_exams_reports::test_report_permissions_and_independent_review` |
 | Cross-site request forgery | Flask-WTF CSRF token on every POST | `test_security::test_every_post_route_rejects_a_missing_csrf_token` (**every** POST route) |
 | Cross-site scripting | Jinja autoescaping, never switched off; Content-Security-Policy | `test_security::test_templates_never_switch_off_escaping`, `test_security_headers`; PDF text escaping in `test_exams_reports` |
-| Tampering with evidence history | Append-only triggers **and** no UPDATE/DELETE privilege for the app account | `test_privileges_db` (34 probes); `verify_demo.sql` E-tests |
+| Tampering with evidence history | Append-only triggers **and** no UPDATE/DELETE privilege for the app account; only *empty* cases can be deleted (RESTRICT foreign keys protect the rest) | `test_privileges_db` (34 probes); `test_people_write_db::test_case_with_evidence_cannot_be_deleted`; `verify_demo.sql` E-tests |
+| Locking reads refused at run time | Locking reads (`FOR UPDATE`) only on tables where the app account has UPDATE or DELETE | `test_security::test_every_locking_read_has_the_privilege_it_needs` |
 | Database account misuse | Least-privilege `forge_x_app`: no DDL, no account management | `test_privileges_db::test_no_ddl_or_account_management`; `test_db::test_connected_as_application_account_not_root` |
 | Password attacks | scrypt hashing; per-account and per-IP lockout stored in MySQL | `test_auth*`; security view in `test_audit_db` |
 | Session theft or fixation | New session at login; HttpOnly, SameSite and (when hosted) Secure cookies; `session_version` logs out every session | `test_auth*`, `test_app` |
@@ -91,6 +93,7 @@ set FORGE_X_DB_WRITE_TESTS=
 | **CSRF** | Code search, plus a test of every POST route with CSRF on | No exemptions anywhere. |
 | **Database privileges** | 34 harmless privilege probes | Matches `app_user.sql` exactly. Each probe is designed to be harmless even if a privilege were wrongly granted. |
 | **Accessibility** | Automated audit of **125 rendered pages**: one `<h1>`, labelled fields, unique ids, named buttons, image `alt` text | **No issues.** The auditor was checked against a deliberately broken page and found all five planted problems. |
+| **Locking reads vs. privileges** (found after Phase 15, on a real run) | Every `SELECT ... FOR UPDATE` in the code checked against the grants in `app_user.sql` | **Fixed two bugs.** MySQL 8.0.22+ refuses a locking read unless the account has UPDATE or DELETE on every table read. Hash recording/verification locked `evidence_hashes`, and the "keep one administrator" check locked `roles`; both now lock only tables the account may update. The check is now a permanent test. |
 | **HTTP headers** | Review of the response headers | **Fixed three gaps.** Chart and dashboard JSON now also get `no-store`; `X-Robots-Tag: noindex` added; HSTS added over HTTPS. |
 
 **Known limitations:**
@@ -119,6 +122,12 @@ Use your own accounts: one administrator (for example `paulson`) and one investi
 - [ ] Completing an examination without findings is refused.
 - [ ] A report goes Draft → new version → Submit. The author has no Approve button.
 - [ ] `paulson` approves it, and the PDF shows *Recorded observation* and *Examiner interpretation*, with no watermark. An older version's PDF shows **SUPERSEDED VERSION**.
+
+**People and cases (as `paulson`)**
+- [ ] **Users & roles → a person → Edit details**: changing the username works, and the person then logs in with the new username.
+- [ ] Changing a username to one that already exists is refused.
+- [ ] An empty case shows **Delete case**; it needs a reason and the typed case reference, and the deletion appears in the audit log.
+- [ ] A case with evidence explains why it can't be deleted and offers no delete button.
 
 **Integrity of history**
 - [ ] Closing a case makes it read-only, and it can't be reopened.

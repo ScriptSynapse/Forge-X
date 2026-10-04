@@ -1,0 +1,16 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}Edit {{ user.full_name }}{% endblock %}
+{% block content %}
+<nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('users.index') }}">Users &amp; roles</a><span aria-hidden="true">/</span>
+  <a href="{{ url_for('users.detail', user_id=user.user_id) }}">{{ user.username }}</a><span aria-hidden="true">/</span><span aria-current="page">Edit details</span></nav>
+{{ ui.page_header("Edit details", "Correct the name, email or username. Roles, status and passwords are changed on the user's page.") }}
+<form method="post" novalidate class="fx-card fx-card-b fx-narrow d-flex flex-column gap-3" data-fx-busy="Saving…">
+  {{ form.hidden_tag() }}
+  {{ ui.field(form.full_name) }}
+  {{ ui.field(form.email) }}
+  {{ ui.field(form.username, help="Used to log in. The person logs in with the new username from now on; past audit records keep the old one.") }}
+  <div class="d-flex gap-2"><button class="fx-btn fx-btn-primary" type="submit">Save changes</button>
+    <a class="fx-btn fx-btn-ghost" href="{{ url_for('users.detail', user_id=user.user_id) }}">Cancel</a></div>
+</form>
+{% endblock %}

@@ -5,7 +5,7 @@ from ..auth.decorators import ADMIN, roles_required
 from ..db import BusinessRuleError, ConstraintViolation
 from ..pagination import parse_page
 from . import services
-from .forms import CreateUserForm, ResetPasswordForm, RoleForm
+from .forms import CreateUserForm, EditUserForm, ResetPasswordForm, RoleForm
 
 bp = Blueprint("users", __name__, url_prefix="/admin/users")
 
@@ -65,6 +65,27 @@ def detail(user_id):
                            reset_form=ResetPasswordForm(),
                            activity=services.user_activity(user_id, parse_page(request.args.get("page"))),
                            is_self=user_id == g.user["user_id"])
+
+
+@bp.route("/<int:user_id>/edit", methods=["GET", "POST"])
+@roles_required(ADMIN)
+def edit(user_id):
+    user = services.get_user(user_id)
+    if user is None:
+        abort(404)
+    form = EditUserForm()
+    if request.method == "GET":
+        form.full_name.data, form.email.data, form.username.data = user["full_name"], user["email"], user["username"]
+    if form.validate_on_submit():
+        try:
+            changed = services.update_user_details(user_id, g.user["user_id"], form.full_name.data,
+                                                   form.email.data, form.username.data)
+        except services.AdminActionError as err:
+            flash(str(err), "danger")
+        else:
+            flash("Details updated." if changed else "No changes to save.", "success" if changed else "info")
+            return redirect(url_for("users.detail", user_id=user_id))
+    return render_template("users/edit.html", user=user, form=form)
 
 
 def _run(action, success_message, user_id):

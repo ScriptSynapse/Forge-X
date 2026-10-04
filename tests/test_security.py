@@ -123,3 +123,29 @@ def test_secrets_are_not_shipped():
     pattern = re.compile(r"""(password|secret_key)\s*=\s*["'](?!testing-only-)[^"'{}\s]{6,}["']""", re.IGNORECASE)
     for path in APP_DIR.rglob("*.py"):
         assert not pattern.search(path.read_text(encoding="utf-8")), f"Possible hard-coded secret in {path.name}"
+
+
+def test_every_locking_read_has_the_privilege_it_needs():
+    """MySQL 8.0.22+ refuses SELECT ... FOR UPDATE unless the account has UPDATE
+    or DELETE on EVERY table the query reads. The application account
+    deliberately has neither on append-only tables, so a locking read there
+    fails at run time (this happened once, on evidence_hashes). Check every
+    locking read in the code against the grants in database/app_user.sql."""
+    grants = (APP_DIR.parent / "database" / "app_user.sql").read_text(encoding="utf-8")
+    lockable = set()
+    for privileges, table in re.findall(r"GRANT ([A-Z, ]+) ON forge_x_db\.(\w+)", grants):
+        if {"UPDATE", "DELETE"} & {p.strip() for p in privileges.split(",")}:
+            lockable.add(table)
+    problems = []
+    for path in APP_DIR.rglob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, (ast.Constant, ast.JoinedStr)):
+                continue
+            text = node.value if isinstance(node, ast.Constant) else "".join(
+                v.value for v in node.values if isinstance(v, ast.Constant) and isinstance(v.value, str))
+            if not isinstance(text, str) or not re.search(r"\bFOR UPDATE\b", text) or "SELECT ..." in text:
+                continue
+            for table in re.findall(r"\b(?:FROM|JOIN)\s+(\w+)", text):
+                if table not in lockable:
+                    problems.append(f"{path.relative_to(APP_DIR.parent)}:{node.lineno} locks {table}")
+    assert not problems, "Locking reads on tables without UPDATE/DELETE privilege:\n" + "\n".join(problems)

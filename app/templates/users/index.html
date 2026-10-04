@@ -69,7 +69,7 @@
           <td><span class="d-flex flex-wrap gap-1">{% for r in u.roles %}{{ ui.tag(r) }}{% else %}<span class="fx-muted">None</span>{% endfor %}</span></td>
           <td>{{ ui.badge(u.account_status) }}</td>
           <td class="fx-mono">{{ u.last_login_at|datetime if u.last_login_at else "Never" }}</td>
-          <td>{% if is_self %}<a class="fx-btn fx-btn-ghost fx-btn-sm" href="{{ url_for('auth.account') }}">My account</a>
+          <td>{% if is_self %}<a class="fx-btn fx-btn-ghost fx-btn-sm" href="{{ url_for('users.edit', user_id=u.user_id) }}">Edit</a>
               {% else %}<a class="fx-btn fx-btn-ghost fx-btn-sm" href="{{ url_for('users.detail', user_id=u.user_id) }}">Manage</a>{% endif %}</td>
         </tr>
       {% endfor %}

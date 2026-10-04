@@ -14,7 +14,7 @@ pytestmark = pytest.mark.db
 DENIED = {1142, 1044, 1227, 1410}       # table / database / global privilege errors
 APPEND_ONLY = ("audit_logs", "login_attempts", "chain_of_custody", "evidence_hashes", "hash_verifications",
                "report_versions", "examination_evidence", "report_examinations")
-NO_DELETE = ("users", "cases", "evidence", "examinations", "forensic_reports", "account_requests",
+NO_DELETE = ("users", "evidence", "examinations", "forensic_reports", "account_requests",
              "storage_locations", "reference_sequences") + APPEND_ONLY
 # Granted UPDATE, with a column to use in the harmless control statement.
 UPDATABLE = {"users": "created_at", "cases": "created_at", "evidence": "registered_at",
@@ -44,6 +44,14 @@ def test_append_only_tables_cannot_be_updated(app, db_available, table):
 def test_records_cannot_be_deleted(app, db_available, table):
     with app.app_context():
         assert denied(f"DELETE FROM {table} WHERE 1 = 0"), f"app account can DELETE from {table}"
+
+
+def test_cases_can_be_deleted_but_only_empty_ones(app, db_available):
+    """DELETE on `cases` is granted (empty cases registered by mistake). Cases
+    with evidence, examinations or reports stay protected by RESTRICT foreign
+    keys, which test_cases_write_db checks end to end."""
+    with app.app_context():
+        assert not denied("DELETE FROM cases WHERE 1 = 0")
 
 
 @pytest.mark.parametrize("table,column", UPDATABLE.items())

@@ -1,0 +1,15 @@
+-- =====================================================================
+-- FORGE-X  |  database/migrations/003_allow_case_delete.sql
+--
+-- Lets administrators delete a case registered by mistake. Run ONCE, as
+-- root, on a database built before this change (a fresh app_user.sql
+-- already includes it):
+--   mysql -u root -p -e "source database/migrations/003_allow_case_delete.sql"
+--
+-- Safe by construction: only DELETE on `cases` is granted. A case that has
+-- evidence, examinations or reports is still protected by the RESTRICT
+-- foreign keys from those tables, and every history table (custody,
+-- hashes, verifications, report versions, audit log, login attempts) stays
+-- without UPDATE or DELETE.
+-- =====================================================================
+GRANT DELETE ON forge_x_db.cases TO 'forge_x_app_role';

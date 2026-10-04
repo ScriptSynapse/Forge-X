@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from .. import audit
 from ..auth.passwords import hash_password, password_problems
-from ..db import call_proc, query_all, query_one, query_value, transaction
+from ..db import ConstraintViolation, call_proc, query_all, query_one, query_value, transaction
 from ..pagination import Page
 
 ADMIN_ROLE = "Administrator"
@@ -183,15 +183,20 @@ def create_user(full_name, email, username, role_id, password, must_change, admi
 
 
 def _lock_active_admins(cur):
+    """Lock the active administrators' rows (the "keep at least one
+    administrator" rule). The role id is looked up first with a plain read:
+    a locking read that also touched `roles` would need UPDATE/DELETE
+    privilege on it, which the application account deliberately lacks."""
+    cur.execute("SELECT role_id FROM roles WHERE role_name = %s", (ADMIN_ROLE,))
+    admin_role_id = cur.fetchone()["role_id"]
     cur.execute(
         """
         SELECT u.user_id FROM users u
           JOIN user_roles ur ON ur.user_id = u.user_id
-          JOIN roles r       ON r.role_id = ur.role_id
-         WHERE r.role_name = %s AND u.account_status = 'Active'
+         WHERE ur.role_id = %s AND u.account_status = 'Active'
            FOR UPDATE
         """,
-        (ADMIN_ROLE,),
+        (admin_role_id,),
     )
     return {row["user_id"] for row in cur.fetchall()}
 
@@ -260,3 +265,39 @@ def reset_password(target_id, password, admin_id):
         )
         audit.record("user.password_reset", "User", username, user_id=admin_id, cursor=cur,
                      details="Temporary password set; change required at next login")
+
+
+def update_user_details(user_id, admin_id, full_name, email, username):
+    """Change a user's name, email or username, audited with what changed.
+
+    Uniqueness among users is a UNIQUE key; uniqueness against PENDING access
+    requests is checked here (the request table's trigger only checks the
+    other direction). Returns False when nothing changed.
+    """
+    email = email.strip().lower()
+    with transaction() as cur:
+        cur.execute("SELECT full_name, email, username FROM users WHERE user_id = %s FOR UPDATE", (user_id,))
+        current = cur.fetchone()
+        if current is None:
+            raise AdminActionError("User not found.")
+        changes = []
+        if full_name != current["full_name"]:
+            changes.append(f"name {current['full_name']} to {full_name}")
+        if email != current["email"].lower():
+            changes.append("email")
+        if username != current["username"]:
+            changes.append(f"username {current['username']} to {username}")
+        if not changes:
+            return False
+        cur.execute("SELECT COUNT(*) AS n FROM account_requests WHERE request_status = 'Pending' "
+                    "AND (LOWER(email) = %s OR LOWER(username) = %s)", (email, username.lower()))
+        if cur.fetchone()["n"]:
+            raise AdminActionError("That email or username belongs to a pending access request.")
+        try:
+            cur.execute("UPDATE users SET full_name = %s, email = %s, username = %s WHERE user_id = %s",
+                        (full_name, email, username, user_id))
+        except ConstraintViolation as err:
+            raise AdminActionError("That email or username is already used by another account.") from err
+        audit.record("user.update", "User", username, user_id=admin_id, cursor=cur,
+                     details=("Changed " + "; ".join(changes))[:500])
+    return True

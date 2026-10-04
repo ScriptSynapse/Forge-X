@@ -35,3 +35,10 @@ class CloseForm(FlaskForm):
                             validators=[DataRequired("Summarise the outcome before closing."), Length(min=10, max=1000)])
     confirm = BooleanField("I understand a closed case can't be reopened or edited.",
                            validators=[DataRequired("Tick the box to confirm.")])
+
+
+class DeleteCaseForm(FlaskForm):
+    reason = TextAreaField("Why is this case being deleted?", filters=[strip],
+                           validators=[DataRequired("Give a reason."), Length(min=10, max=300)])
+    confirm_reference = StringField("Type the case reference to confirm", filters=[strip],
+                                    validators=[DataRequired("Type the case reference.")])

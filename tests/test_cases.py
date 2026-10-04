@@ -47,3 +47,13 @@ def test_filters_ignore_unknown_values():
 
 def test_like_wildcards_are_escaped():
     assert like_pattern("50%_off!") == "%50!%!_off!!%"
+
+
+def test_only_empty_open_cases_can_be_deleted():
+    from app.cases.services import _blockers
+    assert _blockers({"status": "Open", "evidence": 0, "examinations": 0, "reports": 0}) == []
+    assert _blockers({"status": "In Progress", "evidence": 1, "examinations": 2, "reports": 0}) == \
+        ["It has 1 evidence item, 2 examinations."]
+    assert _blockers({"status": "Closed", "evidence": 0, "examinations": 0, "reports": 0}) == \
+        ["It is closed, and closure is part of the record."]
+    assert _blockers(None) == ["The case doesn't exist."]
