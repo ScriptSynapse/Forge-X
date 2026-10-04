@@ -11,7 +11,7 @@
 <nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('examinations.list_examinations') }}">Examinations</a><span aria-hidden="true">/</span><span class="fx-mono" aria-current="page">{{ exam.examination_code }}</span></nav>
 <div class="fx-page-header">
   <div class="d-flex flex-column gap-2">
-    <span class="fx-mono text-info small">{{ exam.examination_code }}</span>
+    <span class="fx-mono text-info small">{{ exam.examination_code }}{% if can_view_audit %} <a class="small ms-2" href="{{ url_for('audit.index', ref=exam.examination_code) }}"><i class="bi bi-list-check" aria-hidden="true"></i> Audit trail</a>{% endif %}</span>
     <h1 class="fx-page-title">{{ exam.type_name }}</h1>
     <div class="d-flex flex-wrap gap-2 align-items-center">{{ ui.badge(exam.status) }}
       {% if exam.is_overdue %}<span class="fx-badge b-red">Overdue</span>{% endif %}

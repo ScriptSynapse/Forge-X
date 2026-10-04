@@ -6,7 +6,7 @@
 <nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('reports.list_reports') }}">Reports</a><span aria-hidden="true">/</span><span class="fx-mono" aria-current="page">{{ report.report_code }}</span></nav>
 <div class="fx-page-header">
   <div class="d-flex flex-column gap-2">
-    <span class="fx-mono text-info small">{{ report.report_code }}, version {{ version.version_no }}{% if not is_latest %} (older version){% endif %}</span>
+    <span class="fx-mono text-info small">{{ report.report_code }}, version {{ version.version_no }}{% if not is_latest %} (older version){% endif %}{% if can_view_audit %} <a class="small ms-2" href="{{ url_for('audit.index', ref=report.report_code) }}"><i class="bi bi-list-check" aria-hidden="true"></i> Audit trail</a>{% endif %}</span>
     <h1 class="fx-page-title">{{ report.title }}</h1>
     <span class="fx-muted small">Case <a class="fx-mono" href="{{ url_for('cases.detail', reference=report.case_reference) }}">{{ report.case_reference }}</a>, written by {{ report.author_name }}</span>
   </div>

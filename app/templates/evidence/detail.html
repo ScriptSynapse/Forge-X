@@ -11,7 +11,7 @@
 
 <div class="fx-page-header">
   <div class="d-flex flex-column gap-2">
-    <span class="fx-mono text-info small">{{ item.evidence_code }}</span>
+    <span class="fx-mono text-info small">{{ item.evidence_code }}{% if can_view_audit %} <a class="small ms-2" href="{{ url_for('audit.index', ref=item.evidence_code) }}"><i class="bi bi-list-check" aria-hidden="true"></i> Audit trail</a>{% endif %}</span>
     <h1 class="fx-page-title">{{ item.description }}</h1>
     <div class="d-flex flex-wrap gap-2 align-items-center">
       {{ ui.tag(item.type_name) }}{{ ui.badge(item.current_status) }}{{ ui.badge(item.integrity_status) }}

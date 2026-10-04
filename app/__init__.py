@@ -62,6 +62,7 @@ def create_app(config=None):
 
 def _register_blueprints(app):
     # Each later phase adds its blueprint here (auth, dashboard, cases, ...).
+    from .audit_logs.routes import bp as audit_bp
     from .auth.routes import bp as auth_bp
     from .cases.routes import bp as cases_bp
     from .custody.routes import bp as custody_bp
@@ -87,6 +88,7 @@ def _register_blueprints(app):
     app.register_blueprint(custody_bp)    # Phase 10
     app.register_blueprint(examinations_bp)  # Phase 11
     app.register_blueprint(reports_bp)       # Phase 11
+    app.register_blueprint(audit_bp)         # Phase 12
 
 
 def _register_security_headers(app):

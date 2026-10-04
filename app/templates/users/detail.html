@@ -81,20 +81,22 @@
 {% endif %}
 
 <section class="fx-card">
-  <div class="fx-card-h"><h2>Recent activity</h2></div>
-  {% if activity %}
+  <div class="fx-card-h"><h2>Activity history <span class="fx-count">{{ activity.total }}</span></h2>
+    {% if has_endpoint('audit.index') %}<a class="small" href="{{ url_for('audit.index', user=user.user_id) }}">Open in audit logs</a>{% endif %}</div>
+  {% if activity.items %}
   <div class="fx-table-wrap">
     <table class="fx-table">
-      <thead><tr><th>Time</th><th>Action</th><th>Entity</th><th>Outcome</th><th>Details</th></tr></thead>
+      <thead><tr><th>Time</th><th>Action</th><th>Record</th><th>Outcome</th><th>Details</th><th>IP address</th></tr></thead>
       <tbody>
-      {% for a in activity %}
-        <tr><td class="fx-mono">{{ a.occurred_at|datetime }}</td><td class="fx-mono">{{ a.action }}</td>
+      {% for a in activity.items %}
+        <tr><td class="fx-mono text-nowrap">{{ a.occurred_at|datetime }}</td><td class="fx-mono">{{ a.action }}</td>
             <td>{{ a.entity_type }} <span class="fx-mono">{{ a.entity_ref or "" }}</span></td>
-            <td>{{ ui.badge(a.outcome) }}</td><td class="fx-muted">{{ a.details or "" }}</td></tr>
+            <td>{{ ui.badge(a.outcome) }}</td><td class="fx-muted">{{ a.details or "" }}</td><td class="fx-mono small">{{ a.ip_address or "" }}</td></tr>
       {% endfor %}
       </tbody>
     </table>
   </div>
+  {{ ui.pagination(activity, "users.detail", {"user_id": user.user_id}, noun="events") }}
   {% else %}
     {{ ui.empty_state("No activity yet") }}
   {% endif %}

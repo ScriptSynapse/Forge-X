@@ -1,0 +1,41 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}Security view{% endblock %}
+{% block content %}
+<nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('audit.index') }}">Audit logs</a><span aria-hidden="true">/</span><span aria-current="page">Security view</span></nav>
+{{ ui.page_header("Security view", "Login abuse and refused actions, computed from login_attempts and audit_logs.") }}
+
+<section class="fx-card" aria-labelledby="locked-h">
+  <div class="fx-card-h"><h2 id="locked-h">Currently locked out <span class="fx-count">{{ locked|length }}</span></h2>
+    <span class="fx-muted small">{{ limit }}+ wrong passwords in the last 15 minutes. The pause ends on its own, or after a correct login once it has.</span></div>
+  {% if locked %}<div class="fx-table-wrap"><table class="fx-table">
+    <thead><tr><th>Username or email</th><th class="num">Wrong passwords</th><th class="num">IP addresses</th><th>Last attempt</th></tr></thead>
+    <tbody>{% for l in locked %}<tr><td class="fx-mono"><a href="{{ url_for('audit.index', ref=l.username_or_email) }}">{{ l.username_or_email }}</a></td>
+      <td class="num">{{ l.failures }}</td><td class="num">{{ l.ips }}</td><td class="fx-mono">{{ l.last_failure|datetime("%d %b %Y %H:%M:%S") }}</td></tr>{% endfor %}</tbody></table></div>
+  {% else %}{{ ui.empty_state("No account is locked out right now") }}{% endif %}
+</section>
+
+<div class="fx-two-col">
+  <section class="fx-card"><div class="fx-card-h"><h2>Repeated failed logins, last 7 days</h2><span class="fx-muted small">3 or more per identifier</span></div>
+    {% if by_identifier %}<div class="fx-table-wrap"><table class="fx-table">
+      <thead><tr><th>Username or email</th><th>Account</th><th class="num">Failures</th><th class="num">IPs</th><th>Last</th></tr></thead>
+      <tbody>{% for r in by_identifier %}<tr><td class="fx-mono"><a href="{{ url_for('audit.index', ref=r.username_or_email) }}">{{ r.username_or_email }}</a></td>
+        <td>{{ r.full_name or "No such account" }}{% if r.inactive_attempts %} <span class="fx-badge b-slate">deactivated</span>{% endif %}</td>
+        <td class="num">{{ r.failures }}</td><td class="num">{{ r.ips }}</td><td class="fx-mono text-nowrap">{{ r.last_failure|datetime }}</td></tr>{% endfor %}</tbody></table></div>
+    {% else %}{{ ui.empty_state("None") }}{% endif %}</section>
+  <section class="fx-card"><div class="fx-card-h"><h2>Failed logins by IP address, last 7 days</h2></div>
+    {% if by_ip %}<div class="fx-table-wrap"><table class="fx-table">
+      <thead><tr><th>IP address</th><th class="num">Failures</th><th class="num">Identifiers tried</th><th>Last</th></tr></thead>
+      <tbody>{% for r in by_ip %}<tr><td class="fx-mono">{{ r.ip_address }}</td><td class="num">{{ r.failures }}</td>
+        <td class="num {{ 'text-warning-emphasis fw-medium' if r.identifiers > 2 }}">{{ r.identifiers }}</td><td class="fx-mono text-nowrap">{{ r.last_failure|datetime }}</td></tr>{% endfor %}</tbody></table></div>
+      <p class="fx-help px-3 pb-3 mb-0">Many different identifiers from one address can mean password spraying.</p>
+    {% else %}{{ ui.empty_state("None") }}{% endif %}</section>
+</div>
+
+<section class="fx-card"><div class="fx-card-h"><h2>Refused actions, last 7 days</h2><a class="small" href="{{ url_for('audit.index', outcome='Denied') }}">All denied events</a></div>
+  {% if denied %}<div class="fx-table-wrap"><table class="fx-table">
+    <thead><tr><th>Time</th><th>User</th><th>Tried to</th><th>Record</th></tr></thead>
+    <tbody>{% for d in denied %}<tr><td class="fx-mono text-nowrap">{{ d.occurred_at|datetime }}</td><td>{{ d.user_name or "—" }}</td>
+      <td>{{ d.details or action_labels.get(d.action, d.action) }}</td><td>{{ d.entity_type }} <span class="fx-mono">{{ d.entity_ref or "" }}</span></td></tr>{% endfor %}</tbody></table></div>
+  {% else %}{{ ui.empty_state("No refused actions") }}{% endif %}</section>
+{% endblock %}

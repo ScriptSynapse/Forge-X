@@ -1,8 +1,11 @@
 """User and role administration. Every change is checked here AND by the
 database (CHECK constraints, triggers, stored procedures)."""
+from dataclasses import dataclass
+
 from .. import audit
 from ..auth.passwords import hash_password, password_problems
 from ..db import call_proc, query_all, query_one, query_value, transaction
+from ..pagination import Page
 
 ADMIN_ROLE = "Administrator"
 
@@ -19,21 +22,83 @@ def _not_self(target_id, admin_id):
 # ---------------------------------------------------------------------------
 # Reads
 # ---------------------------------------------------------------------------
-def list_users():
+INACTIVE_DAYS = 30
+
+
+@dataclass
+class UserFilters:
+    q: str = ""
+    role_id: int = None
+    status: str = ""
+    inactive: bool = False
+
+    @classmethod
+    def from_args(cls, args):
+        role = args.get("role", "")
+        return cls(q=(args.get("q") or "").strip()[:100], role_id=int(role) if role.isdigit() else None,
+                   status=args.get("status") if args.get("status") in ("Active", "Deactivated") else "",
+                   inactive=args.get("inactive") == "1")
+
+    def as_args(self):
+        args = {"q": self.q, "role": self.role_id or "", "status": self.status, "inactive": "1" if self.inactive else ""}
+        return {k: v for k, v in args.items() if v}
+
+    @property
+    def active(self):
+        return bool(self.as_args())
+
+
+def _like(text):
+    return "%" + text.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%"
+
+
+def list_users(filters=None, page=1, per_page=50):
+    """Users with their roles. `inactive` = deactivated, never logged in, or
+    no login for INACTIVE_DAYS days (the 'inactive accounts' query)."""
+    filters = filters or UserFilters()
+    where, params = ["1 = 1"], []
+    if filters.q:
+        where.append("(u.full_name LIKE %s ESCAPE '!' OR u.username LIKE %s ESCAPE '!' OR u.email LIKE %s ESCAPE '!')")
+        params += [_like(filters.q)] * 3
+    if filters.role_id:
+        where.append("EXISTS (SELECT 1 FROM user_roles x WHERE x.user_id = u.user_id AND x.role_id = %s)")
+        params.append(filters.role_id)
+    if filters.status:
+        where.append("u.account_status = %s")
+        params.append(filters.status)
+    if filters.inactive:
+        where.append(f"(u.account_status = 'Deactivated' OR u.last_login_at IS NULL "
+                     f"OR u.last_login_at < NOW() - INTERVAL {INACTIVE_DAYS} DAY)")
+    condition = " AND ".join(where)
+    total = query_value(f"SELECT COUNT(*) FROM users u WHERE {condition}", tuple(params))
+    pages = max(1, -(-total // per_page))
+    page = min(page, pages)
     rows = query_all(
-        """
-        SELECT u.user_id, u.full_name, u.email, u.username, u.account_status, u.last_login_at,
+        f"""
+        SELECT u.user_id, u.full_name, u.email, u.username, u.account_status, u.last_login_at, u.created_at,
                GROUP_CONCAT(r.role_name ORDER BY r.role_id SEPARATOR '|') AS role_list
           FROM users u
           LEFT JOIN user_roles ur ON ur.user_id = u.user_id
           LEFT JOIN roles r       ON r.role_id = ur.role_id
+         WHERE {condition}
          GROUP BY u.user_id
          ORDER BY u.account_status, u.full_name
-        """
+         LIMIT %s OFFSET %s
+        """,
+        tuple(params) + (per_page, (page - 1) * per_page),
     )
     for row in rows:
         row["roles"] = row.pop("role_list").split("|") if row["role_list"] else []
-    return rows
+    return Page(items=rows, page=page, per_page=per_page, total=total)
+
+
+def reviewed_requests(limit=20):
+    return query_all(
+        "SELECT ar.request_id, ar.full_name, ar.username, ar.request_status, ar.reviewed_at, ar.review_note, "
+        "rv.full_name AS reviewer_name, cu.user_id AS created_user_id "
+        "FROM account_requests ar LEFT JOIN users rv ON rv.user_id = ar.reviewed_by "
+        "LEFT JOIN users cu ON cu.user_id = ar.created_user_id "
+        "WHERE ar.request_status <> 'Pending' ORDER BY ar.reviewed_at DESC LIMIT %s", (limit,))
 
 
 def list_pending_requests():
@@ -74,12 +139,14 @@ def get_user(user_id):
     return user
 
 
-def user_activity(user_id, limit=15):
-    return query_all(
-        "SELECT occurred_at, action, entity_type, entity_ref, outcome, details FROM v_activity_feed "
-        "WHERE user_id = %s ORDER BY occurred_at DESC LIMIT %s",
-        (user_id, limit),
-    )
+def user_activity(user_id, page=1, per_page=15):
+    total = query_value("SELECT COUNT(*) FROM v_activity_feed WHERE user_id = %s", (user_id,))
+    pages = max(1, -(-total // per_page))
+    page = min(page, pages)
+    rows = query_all("SELECT occurred_at, action, entity_type, entity_ref, outcome, details, ip_address "
+                     "FROM v_activity_feed WHERE user_id = %s ORDER BY occurred_at DESC LIMIT %s OFFSET %s",
+                     (user_id, per_page, (page - 1) * per_page))
+    return Page(items=rows, page=page, per_page=per_page, total=total)
 
 
 # ---------------------------------------------------------------------------

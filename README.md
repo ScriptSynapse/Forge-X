@@ -18,7 +18,7 @@ All data in the project is synthetic. FORGE-X is a learning project, not a certi
 
 ## Project status
 
-The project is built in 15 phases. This package contains **Phases 1–11**.
+The project is built in 15 phases. This package contains **Phases 1–12**.
 
 | Phase | Content | Status |
 |---|---|---|
@@ -32,8 +32,8 @@ The project is built in 15 phases. This package contains **Phases 1–11**.
 | 8 | Case management | ✅ Verified |
 | 9 | Evidence management | ✅ Verified |
 | 10 | Integrity and chain of custody | ✅ Verified |
-| 11 | Examinations, reports and PDF export | 🟡 Written; run the tests below to confirm |
-| 12 | User administration and audit log pages | ⬜ Pending |
+| 11 | Examinations, reports and PDF export | ✅ Verified |
+| 12 | User administration and audit logs | 🟡 Written; run the tests below to confirm |
 | 13 | Analytics and global search | ⬜ Pending |
 | 14 | Testing and security review | ⬜ Pending |
 | 15 | Documentation and submission | ⬜ Pending |
@@ -69,7 +69,8 @@ Forge-X/
 │   ├── pagination.py        Page helper for list screens
 │   ├── cli.py               flask check-db, create-admin, set-password
 │   ├── auth/                Login, logout, signup, account, password change, decorators
-│   ├── users/               Users & roles administration (approve requests, roles, status)
+│   ├── users/               Users & roles administration (search, inactive accounts, requests, roles, status)
+│   ├── audit_logs/          Audit log timeline, CSV export and security view (/audit-logs)
 │   ├── dashboard/           Dashboard page and chart JSON endpoints (/api/dashboard/...)
 │   ├── cases/               Case list, create, details (tabs), edit, status, investigators, closure
 │   ├── evidence/            Evidence registry, register, details (hashes, custody timeline), edit
@@ -216,10 +217,10 @@ Open http://127.0.0.1:5000 and log in as `paulson`. You land on the dashboard.
 pytest -v
 ```
 
-**Expect about 80 passed and 28 skipped.** The exact split depends on your data.
+**Expect about 88 passed and 30 skipped.** The exact split depends on your data.
 
 * 6 tests skip because they check specific demo records, or need an evidence hash to test against. The skip reason says "demo data not installed" or "empty lab".
-* 22 are the opt-in workflow tests described below.
+* 24 are the opt-in workflow tests described below.
 
 With the demo data installed instead (`install_demo.sql`), more tests run.
 
@@ -227,7 +228,7 @@ With the demo data installed instead (`install_demo.sql`), more tests run.
 
 ```cmd
 set FORGE_X_DB_WRITE_TESTS=1
-pytest tests\test_auth_db.py tests\test_cases_write_db.py tests\test_evidence_write_db.py tests\test_integrity_custody_write_db.py tests\test_exams_reports_write_db.py -v
+pytest tests\test_auth_db.py tests\test_cases_write_db.py tests\test_evidence_write_db.py tests\test_integrity_custody_write_db.py tests\test_exams_reports_write_db.py tests\test_audit_write_db.py -v
 set FORGE_X_DB_WRITE_TESTS=
 ```
 
@@ -330,6 +331,23 @@ Every figure is computed by a MySQL query when the page loads. Nothing is hard-c
   * the referenced evidence with its current SHA-256, plus the note that a matching hash alone doesn't prove authenticity
 
   Anything other than the latest approved version carries a **NOT APPROVED** or **SUPERSEDED VERSION** watermark. Every export is audited.
+
+## Audit logs and user administration
+
+* **Audit logs** (`/audit-logs`) are for administrators and read-only auditors.
+  * One timeline (`v_activity_feed`) of every audited action and login attempt.
+  * Filters for date range, user, action, record type, outcome and record reference (such as an evidence ID or username).
+  * A summary of the filtered events: totals, failures, denials and users involved.
+* **"Audit trail" links** on case, evidence, examination and report pages open the timeline for that record.
+* **CSV export** uses the same filters, up to 50,000 rows, in UTF-8 that opens correctly in Excel.
+  * Cells that start with `=`, `+`, `-` or `@` are prefixed with an apostrophe. This stops *CSV formula injection*: someone could type a formula as a "username" on the login page, and it must never run in a spreadsheet.
+  * Every export is itself audited.
+* **The security view** shows:
+  * accounts currently locked out by the login rate limit
+  * repeated failed logins over the last 7 days, grouped by account and by IP address (many different usernames from one IP suggests password spraying)
+  * actions refused in the last 7 days
+* **Audit records can't be changed.** Triggers block edits and deletions, and the app's MySQL account has no UPDATE or DELETE permission on these tables.
+* **Users & roles** has search, role and status filters, pagination, and an *inactive accounts* view (deactivated, never logged in, or no login for 30 days). It also lists recently reviewed access requests and shows each user's full, paginated activity history.
 
 ## Optional demonstration data
 

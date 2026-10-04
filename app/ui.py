@@ -155,4 +155,6 @@ def register_template_helpers(app):
             "has_endpoint": has_endpoint,
             "navigation": build_navigation,
             "current_year": datetime.now().year,
+            # Administrators and auditors get "Audit trail" links on record pages.
+            "can_view_audit": bool({ADMIN, AUDITOR} & user_roles()),
         }

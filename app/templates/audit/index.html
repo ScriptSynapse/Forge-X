@@ -1,0 +1,49 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}Audit logs{% endblock %}
+{% block content %}
+{% call ui.page_header("Audit logs", "A read-only record of logins, account changes and evidence operations. Passwords, hashes of passwords and tokens are never logged.") %}
+  <a class="fx-btn fx-btn-ghost" href="{{ url_for('audit.security') }}"><i class="bi bi-shield-exclamation" aria-hidden="true"></i>Security view</a>
+  <a class="fx-btn fx-btn-secondary" href="{{ url_for('audit.export', **filters.as_args()) }}"><i class="bi bi-download" aria-hidden="true"></i>Export CSV</a>
+{% endcall %}
+
+<section class="fx-stat-strip" aria-label="Summary of the filtered events">
+  <div><span class="fx-muted small">Events</span><strong>{{ summary.total }}</strong></div>
+  <div><span class="fx-muted small">Failures</span><strong class="{{ 'text-danger-emphasis' if summary.failures }}">{{ summary.failures }}</strong></div>
+  <div><span class="fx-muted small">Denied</span><strong class="{{ 'text-warning-emphasis' if summary.denied }}">{{ summary.denied }}</strong></div>
+  <div><span class="fx-muted small">Users involved</span><strong>{{ summary.users }}</strong></div>
+  <div><span class="fx-muted small">Period</span><strong class="small fw-normal">{{ summary.first_event|date if summary.first_event else "—" }} to {{ summary.last_event|date if summary.last_event else "—" }}</strong></div>
+</section>
+
+<section class="fx-card">
+  <form method="get" class="fx-filter-bar" role="search">
+    <div><label class="fx-label" for="a-from">From</label><input id="a-from" name="from" type="date" class="fx-input" value="{{ filters.date_from or '' }}"></div>
+    <div><label class="fx-label" for="a-to">To</label><input id="a-to" name="to" type="date" class="fx-input" value="{{ filters.date_to or '' }}"></div>
+    <div><label class="fx-label" for="a-user">User</label><select id="a-user" name="user" class="fx-input"><option value="">All users</option>
+      {% for u in options.users %}<option value="{{ u.user_id }}" {% if filters.user_id == u.user_id %}selected{% endif %}>{{ u.full_name }} ({{ u.username }})</option>{% endfor %}</select></div>
+    <div><label class="fx-label" for="a-action">Action</label><select id="a-action" name="action" class="fx-input"><option value="">All actions</option>
+      {% for a in options.actions %}<option value="{{ a }}" {% if filters.action == a %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></div>
+    <div><label class="fx-label" for="a-entity">Record type</label><select id="a-entity" name="entity" class="fx-input"><option value="">All types</option>
+      {% for t in entity_types %}<option value="{{ t }}" {% if filters.entity_type == t %}selected{% endif %}>{{ t }}</option>{% endfor %}</select></div>
+    <div><label class="fx-label" for="a-outcome">Outcome</label><select id="a-outcome" name="outcome" class="fx-input"><option value="">All outcomes</option>
+      {% for o in outcomes %}<option value="{{ o }}" {% if filters.outcome == o %}selected{% endif %}>{{ o }}</option>{% endfor %}</select></div>
+    <div class="fx-filter-grow"><label class="fx-label" for="a-ref">Record reference</label>
+      <input id="a-ref" name="ref" class="fx-input fx-mono" value="{{ filters.ref }}" placeholder="e.g. FX-EV-2026-00001 or a username"></div>
+    <div class="fx-filter-actions"><button class="fx-btn fx-btn-secondary" type="submit">Apply</button>
+      {% if filters.active %}<a class="fx-btn fx-btn-ghost" href="{{ url_for('audit.index') }}">Clear</a>{% endif %}</div>
+  </form>
+  {% if page.items %}
+  <div class="fx-table-wrap"><table class="fx-table">
+    <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Record</th><th>Outcome</th><th>Details</th><th>IP address</th></tr></thead>
+    <tbody>{% for e in page.items %}
+      <tr><td class="fx-mono text-nowrap">{{ e.occurred_at|datetime("%d %b %Y %H:%M:%S") }}</td>
+        <td>{% if e.user_name %}{{ e.user_name }}{% else %}<span class="fx-muted">Not logged in</span>{% endif %}</td>
+        <td><span class="d-flex flex-column"><span>{{ action_labels.get(e.action, e.action) }}</span><span class="fx-mono fx-muted small">{{ e.action }}</span></span></td>
+        <td>{{ e.entity_type }}{% if e.entity_ref %} <a class="fx-mono" href="{{ url_for('audit.index', ref=e.entity_ref) }}" title="All events for this record">{{ e.entity_ref }}</a>{% endif %}</td>
+        <td>{{ ui.badge(e.outcome) }}</td><td class="fx-muted small">{{ e.details or "" }}</td><td class="fx-mono small">{{ e.ip_address or "" }}</td></tr>
+    {% endfor %}</tbody></table></div>
+  {{ ui.pagination(page, "audit.index", filters.as_args(), noun="events") }}
+  {% else %}{{ ui.empty_state("No events" ~ (" match these filters" if filters.active else " yet")) }}{% endif %}
+</section>
+<p class="fx-help m-0">Audit records and login attempts can't be edited or deleted, by FORGE-X users or by the application's own database account. CSV exports are themselves recorded here.</p>
+{% endblock %}

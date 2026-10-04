@@ -42,12 +42,25 @@
 </section>
 
 <section class="fx-card" aria-labelledby="users-h">
-  <div class="fx-card-h"><h2 id="users-h">Users <span class="fx-count">{{ users|length }}</span></h2></div>
+  <div class="fx-card-h"><h2 id="users-h">Users <span class="fx-count">{{ page.total }}</span></h2>
+    {% if not filters.inactive %}<a class="small" href="{{ url_for('users.index', inactive=1) }}">Show inactive accounts</a>{% endif %}</div>
+  <form method="get" class="fx-filter-bar" role="search">
+    <div class="fx-filter-grow"><label class="fx-label" for="u-q">Search</label><input id="u-q" name="q" type="search" class="fx-input" value="{{ filters.q }}" placeholder="Name, username or email"></div>
+    <div><label class="fx-label" for="u-role">Role</label><select id="u-role" name="role" class="fx-input"><option value="">All roles</option>
+      {% for r in roles %}<option value="{{ r.role_id }}" {% if filters.role_id == r.role_id %}selected{% endif %}>{{ r.role_name }}</option>{% endfor %}</select></div>
+    <div><label class="fx-label" for="u-status">Status</label><select id="u-status" name="status" class="fx-input"><option value="">Any</option>
+      {% for st in ["Active", "Deactivated"] %}<option value="{{ st }}" {% if filters.status == st %}selected{% endif %}>{{ st }}</option>{% endfor %}</select></div>
+    <div class="fx-filter-actions align-self-center pt-3"><label class="fx-check"><input type="checkbox" name="inactive" value="1" {% if filters.inactive %}checked{% endif %}> Inactive only</label></div>
+    <div class="fx-filter-actions"><button class="fx-btn fx-btn-secondary" type="submit">Apply</button>
+      {% if filters.active %}<a class="fx-btn fx-btn-ghost" href="{{ url_for('users.index') }}">Clear</a>{% endif %}</div>
+  </form>
+  {% if filters.inactive %}<p class="fx-help px-3 pt-3 mb-0">Inactive means deactivated, never logged in, or no login for {{ inactive_days }} days.</p>{% endif %}
+  {% if page.items %}
   <div class="fx-table-wrap">
     <table class="fx-table">
       <thead><tr><th>Name</th><th>Username</th><th>Roles</th><th>Status</th><th>Last login</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
       <tbody>
-      {% for u in users %}
+      {% for u in page.items %}
         {% set is_self = u.user_id == current_user.user_id %}
         <tr>
           <td><span class="d-flex flex-column"><span class="fw-medium">{{ u.full_name }}{% if is_self %} <span class="fx-muted fw-normal">(you)</span>{% endif %}</span>
@@ -63,7 +76,20 @@
       </tbody>
     </table>
   </div>
+  {{ ui.pagination(page, "users.index", filters.as_args(), noun="users") }}
+  {% else %}{{ ui.empty_state("No users match these filters") }}{% endif %}
 </section>
+
+{% if reviewed %}
+<details class="fx-card fx-card-b">
+  <summary class="fw-semibold">Reviewed access requests <span class="fx-count">{{ reviewed|length }}</span></summary>
+  <div class="fx-table-wrap mt-3"><table class="fx-table">
+    <thead><tr><th>Request</th><th>Name</th><th>Username</th><th>Outcome</th><th>Reviewed</th><th>By</th><th>Note</th></tr></thead>
+    <tbody>{% for r in reviewed %}<tr><td class="fx-mono">AR-{{ '%04d'|format(r.request_id) }}</td><td>{{ r.full_name }}</td>
+      <td class="fx-mono">{% if r.created_user_id %}<a href="{{ url_for('users.detail', user_id=r.created_user_id) }}">{{ r.username }}</a>{% else %}{{ r.username }}{% endif %}</td>
+      <td>{{ ui.badge(r.request_status) }}</td><td class="text-nowrap">{{ r.reviewed_at|datetime }}</td><td>{{ r.reviewer_name or "—" }}</td><td class="fx-muted">{{ r.review_note or "" }}</td></tr>{% endfor %}</tbody></table></div>
+</details>
+{% endif %}
 
 <section aria-label="Roles" class="fx-role-grid">
   {% for role in roles %}

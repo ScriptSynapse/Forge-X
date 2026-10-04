@@ -12,7 +12,7 @@
 
 <div class="fx-page-header">
   <div class="d-flex flex-column gap-2">
-    <span class="fx-mono text-info small">{{ case.case_reference }}</span>
+    <span class="fx-mono text-info small">{{ case.case_reference }}{% if can_view_audit %} <a class="small ms-2" href="{{ url_for('audit.index', ref=case.case_reference) }}"><i class="bi bi-list-check" aria-hidden="true"></i> Audit trail</a>{% endif %}</span>
     <h1 class="fx-page-title">{{ case.title }}</h1>
     <div class="d-flex flex-wrap gap-2 align-items-center">
       {{ ui.badge(case.status) }}{{ ui.priority(case.priority) }}{{ ui.tag(case.type_name) }}

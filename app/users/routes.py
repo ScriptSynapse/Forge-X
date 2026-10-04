@@ -1,8 +1,9 @@
 """Users & roles administration (administrators only)."""
-from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for
+from flask import Blueprint, abort, current_app, flash, g, redirect, render_template, request, url_for
 
 from ..auth.decorators import ADMIN, roles_required
 from ..db import BusinessRuleError, ConstraintViolation
+from ..pagination import parse_page
 from . import services
 from .forms import CreateUserForm, ResetPasswordForm, RoleForm
 
@@ -16,11 +17,15 @@ def _role_choices(exclude=()):
 @bp.get("")
 @roles_required(ADMIN)
 def index():
+    filters = services.UserFilters.from_args(request.args)
     return render_template(
         "users/index.html",
-        users=services.list_users(),
+        page=services.list_users(filters, parse_page(request.args.get("page")), current_app.config["PAGE_SIZE"]),
+        filters=filters,
         requests=services.list_pending_requests(),
+        reviewed=services.reviewed_requests(),
         roles=services.list_roles(),
+        inactive_days=services.INACTIVE_DAYS,
     )
 
 
@@ -57,7 +62,8 @@ def detail(user_id):
     role_form = RoleForm()
     role_form.role_id.choices = _role_choices(exclude=held)
     return render_template("users/detail.html", user=user, role_form=role_form,
-                           reset_form=ResetPasswordForm(), activity=services.user_activity(user_id),
+                           reset_form=ResetPasswordForm(),
+                           activity=services.user_activity(user_id, parse_page(request.args.get("page"))),
                            is_self=user_id == g.user["user_id"])
 
 
