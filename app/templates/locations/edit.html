@@ -1,0 +1,13 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}Edit {{ location.location_name }}{% endblock %}
+{% block content %}
+<nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('locations.index') }}">Storage locations</a><span aria-hidden="true">/</span><span aria-current="page">{{ location.location_name }}</span></nav>
+{{ ui.page_header("Edit location", "Renaming is safe: custody entries refer to the location by ID, so their history shows the new name.") }}
+<form method="post" novalidate class="fx-card fx-card-b fx-narrow d-flex flex-column gap-3">
+  {{ form.hidden_tag() }}
+  {{ ui.field(form.location_name) }}{{ ui.field(form.location_type) }}{{ ui.field(form.description) }}
+  <div class="d-flex gap-2"><button type="submit" class="fx-btn fx-btn-primary">Save changes</button>
+    <a class="fx-btn fx-btn-ghost" href="{{ url_for('locations.index') }}">Cancel</a></div>
+</form>
+{% endblock %}

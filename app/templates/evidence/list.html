@@ -1,0 +1,63 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}Evidence{% endblock %}
+{% block content %}
+{% call ui.page_header("Evidence", page.total ~ " item" ~ ("s" if page.total != 1 else "") ~ (" matching your filters" if filters.active else "") ~ ". FORGE-X stores evidence details and hashes, never the evidence files themselves.") %}
+  {% if can_register %}<a class="fx-btn fx-btn-primary" href="{{ url_for('evidence.create') }}"><i class="bi bi-plus-lg" aria-hidden="true"></i>Register evidence</a>{% endif %}
+{% endcall %}
+
+<nav class="fx-status-tabs" aria-label="Filter by status">
+  {% set base = filters.as_args() %}{% set _ = base.pop("status", None) %}
+  <a class="fx-tab" href="{{ url_for('evidence.list_evidence', **base) }}" {% if not filters.status %}aria-current="page"{% endif %}>All<span class="fx-count">{{ counts.values()|sum }}</span></a>
+  {% for s in statuses %}
+  <a class="fx-tab" href="{{ url_for('evidence.list_evidence', status=s, **base) }}" {% if filters.status == s %}aria-current="page"{% endif %}>{{ s }}<span class="fx-count">{{ counts[s] }}</span></a>
+  {% endfor %}
+</nav>
+
+<section class="fx-card">
+  <form method="get" action="{{ url_for('evidence.list_evidence') }}" class="fx-filter-bar" role="search">
+    {% if filters.status %}<input type="hidden" name="status" value="{{ filters.status }}">{% endif %}
+    <div class="fx-filter-grow"><label class="fx-label" for="f-q">Search</label>
+      <input id="f-q" name="q" class="fx-input" type="search" value="{{ filters.q }}" placeholder="Evidence ID or description"></div>
+    <div><label class="fx-label" for="f-type">Evidence type</label>
+      <select id="f-type" name="type" class="fx-input"><option value="">All types</option>
+        {% for t in types %}<option value="{{ t.evidence_type_id }}" {% if filters.evidence_type_id == t.evidence_type_id %}selected{% endif %}>{{ t.type_name }}</option>{% endfor %}</select></div>
+    <div><label class="fx-label" for="f-case">Case</label>
+      <select id="f-case" name="case" class="fx-input"><option value="">All cases</option>
+        {% for c in cases %}<option value="{{ c.case_reference }}" {% if filters.case_reference == c.case_reference %}selected{% endif %}>{{ c.case_reference }}</option>{% endfor %}</select></div>
+    <div><label class="fx-label" for="f-integrity">Integrity</label>
+      <select id="f-integrity" name="integrity" class="fx-input"><option value="">Any</option>
+        {% for i in integrity_statuses %}<option value="{{ i }}" {% if filters.integrity == i %}selected{% endif %}>{{ i }}</option>{% endfor %}</select></div>
+    <div><label class="fx-label" for="f-sort">Sort by</label>
+      <select id="f-sort" name="sort" class="fx-input">
+        {% for key, (label, _sql) in sorts.items() %}<option value="{{ key }}" {% if filters.sort == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+    <div class="fx-filter-actions"><button type="submit" class="fx-btn fx-btn-secondary">Apply</button>
+      {% if filters.active or filters.sort != "newest" %}<a class="fx-btn fx-btn-ghost" href="{{ url_for('evidence.list_evidence') }}">Clear</a>{% endif %}</div>
+  </form>
+
+  {% if page.items %}
+  <div class="fx-table-wrap">
+    <table class="fx-table">
+      <thead><tr><th>Evidence ID</th><th>Case</th><th>Type</th><th>Description</th><th>Status</th><th>Integrity</th><th>Collected</th><th>Custodian</th><th>Location</th></tr></thead>
+      <tbody>
+      {% for e in page.items %}
+        <tr>
+          <td><a class="fx-mono" href="{{ url_for('evidence.detail', code=e.evidence_code) }}">{{ e.evidence_code }}</a></td>
+          <td><a class="fx-mono" href="{{ url_for('cases.detail', reference=e.case_reference) }}">{{ e.case_reference }}</a></td>
+          <td>{{ e.evidence_type }}</td><td>{{ e.description }}</td>
+          <td>{{ ui.badge(e.current_status) }}</td><td>{{ ui.badge(e.integrity_status) }}</td>
+          <td class="text-nowrap">{{ e.collected_at|date }}</td><td>{{ e.current_custodian }}</td><td>{{ e.current_location or "—" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {{ ui.pagination(page, "evidence.list_evidence", filters.as_args(), noun="items") }}
+  {% else %}
+    {% if filters.active %}
+      {% call ui.empty_state("No evidence matches these filters", "Try a different search or clear the filters.") %}
+        <a class="fx-btn fx-btn-secondary fx-btn-sm" href="{{ url_for('evidence.list_evidence') }}">Clear filters</a>{% endcall %}
+    {% else %}{{ ui.empty_state("No evidence yet", "Evidence registered for cases you can see appears here.") }}{% endif %}
+  {% endif %}
+</section>
+{% endblock %}

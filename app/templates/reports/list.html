@@ -1,0 +1,26 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}Reports{% endblock %}
+{% block content %}
+{% call ui.page_header("Reports", "Every saved change creates a new version. Earlier versions stay available for export.") %}
+  {% if can_create %}<a class="fx-btn fx-btn-primary" href="{{ url_for('reports.create') }}"><i class="bi bi-plus-lg" aria-hidden="true"></i>New report</a>{% endif %}
+{% endcall %}
+<nav class="fx-status-tabs" aria-label="Filter by status">
+  {% set base = filters.as_args() %}{% set _ = base.pop("status", None) %}
+  <a class="fx-tab" href="{{ url_for('reports.list_reports', **base) }}" {% if not filters.status %}aria-current="page"{% endif %}>All<span class="fx-count">{{ counts.values()|sum }}</span></a>
+  {% for s in statuses %}<a class="fx-tab" href="{{ url_for('reports.list_reports', status=s, **base) }}" {% if filters.status == s %}aria-current="page"{% endif %}>{{ s }}<span class="fx-count">{{ counts[s] }}</span></a>{% endfor %}
+</nav>
+<section class="fx-card">
+  {% if page.items %}
+  <div class="fx-table-wrap"><table class="fx-table">
+    <thead><tr><th>Report ID</th><th>Title</th><th>Case</th><th>Author</th><th class="num">Version</th><th>Status</th><th>Updated</th><th><span class="visually-hidden">PDF</span></th></tr></thead>
+    <tbody>{% for r in page.items %}
+      <tr><td><a class="fx-mono" href="{{ url_for('reports.detail', code=r.report_code) }}">{{ r.report_code }}</a></td><td>{{ r.title }}</td>
+        <td class="fx-mono">{{ r.case_reference }}</td><td>{{ r.author_name }}</td><td class="num">v{{ r.version_no }}</td>
+        <td>{{ ui.badge(r.status) }}</td><td class="text-nowrap">{{ r.updated_at|date }}</td>
+        <td><a class="fx-btn fx-btn-ghost fx-btn-sm" href="{{ url_for('reports.pdf', code=r.report_code) }}">PDF</a></td></tr>
+    {% endfor %}</tbody></table></div>
+  {{ ui.pagination(page, "reports.list_reports", filters.as_args(), noun="reports") }}
+  {% else %}{{ ui.empty_state("No reports yet", "Reports are written for a case and cite its examinations.") }}{% endif %}
+</section>
+{% endblock %}

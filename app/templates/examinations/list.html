@@ -1,0 +1,40 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}Examinations{% endblock %}
+{% block content %}
+{% call ui.page_header("Examinations", "FORGE-X records examination work. It never runs tools against evidence.") %}
+  {% if can_create %}<a class="fx-btn fx-btn-primary" href="{{ url_for('examinations.create') }}"><i class="bi bi-plus-lg" aria-hidden="true"></i>New examination</a>{% endif %}
+{% endcall %}
+<nav class="fx-status-tabs" aria-label="Filter by status">
+  {% set base = filters.as_args() %}{% set _ = base.pop("status", None) %}
+  <a class="fx-tab" href="{{ url_for('examinations.list_examinations', **base) }}" {% if not filters.status %}aria-current="page"{% endif %}>All<span class="fx-count">{{ counts.values()|sum }}</span></a>
+  {% for s in statuses %}<a class="fx-tab" href="{{ url_for('examinations.list_examinations', status=s, **base) }}" {% if filters.status == s %}aria-current="page"{% endif %}>{{ s }}<span class="fx-count">{{ counts[s] }}</span></a>{% endfor %}
+</nav>
+<section class="fx-card">
+  <form method="get" class="fx-filter-bar" role="search">
+    {% if filters.status %}<input type="hidden" name="status" value="{{ filters.status }}">{% endif %}
+    <div><label class="fx-label" for="f-type">Type</label><select id="f-type" name="type" class="fx-input"><option value="">All types</option>
+      {% for t in types %}<option value="{{ t.examination_type_id }}" {% if filters.examination_type_id == t.examination_type_id %}selected{% endif %}>{{ t.type_name }}</option>{% endfor %}</select></div>
+    <div><label class="fx-label" for="f-case">Case reference</label><input id="f-case" name="case" class="fx-input fx-mono" value="{{ filters.case_reference }}" placeholder="FX-2026-0001"></div>
+    <div class="fx-filter-actions align-self-center pt-3">
+      <label class="fx-check"><input type="checkbox" name="mine" value="1" {% if filters.mine %}checked{% endif %}> Mine</label>
+      <label class="fx-check"><input type="checkbox" name="overdue" value="1" {% if filters.overdue %}checked{% endif %}> Overdue</label></div>
+    <div class="fx-filter-actions"><button class="fx-btn fx-btn-secondary" type="submit">Apply</button>
+      {% if filters.active %}<a class="fx-btn fx-btn-ghost" href="{{ url_for('examinations.list_examinations') }}">Clear</a>{% endif %}</div>
+  </form>
+  {% if page.items %}
+  <div class="fx-table-wrap"><table class="fx-table">
+    <thead><tr><th>Exam ID</th><th>Type</th><th>Case</th><th>Examiner</th><th>Status</th><th class="num">Evidence</th><th>Started</th><th>Due or completed</th></tr></thead>
+    <tbody>{% for x in page.items %}
+      <tr><td><a class="fx-mono" href="{{ url_for('examinations.detail', code=x.examination_code) }}">{{ x.examination_code }}</a></td>
+        <td>{{ x.examination_type }}</td><td><a class="fx-mono" href="{{ url_for('cases.detail', reference=x.case_reference) }}">{{ x.case_reference }}</a></td>
+        <td>{{ x.examiner_name }}</td><td>{{ ui.badge(x.status) }}</td><td class="num">{{ x.evidence_count }}</td>
+        <td class="text-nowrap">{{ x.started_at|date if x.started_at else "Not started" }}</td>
+        <td class="text-nowrap {{ 'text-danger-emphasis fw-medium' if x.is_overdue }}">
+          {% if x.status == "Completed" %}Completed {{ x.completed_at|date }}{% elif x.status == "Cancelled" %}Cancelled
+          {% elif x.due_date %}{{ "Overdue, due" if x.is_overdue else "Due" }} {{ x.due_date|date }}{% else %}—{% endif %}</td></tr>
+    {% endfor %}</tbody></table></div>
+  {{ ui.pagination(page, "examinations.list_examinations", filters.as_args(), noun="examinations") }}
+  {% else %}{{ ui.empty_state("No examinations" ~ (" match these filters" if filters.active else " yet"), "Examinations are created for a case and linked to its evidence.") }}{% endif %}
+</section>
+{% endblock %}

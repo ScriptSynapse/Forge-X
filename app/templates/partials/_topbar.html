@@ -1,0 +1,37 @@
+<header class="fx-topbar">
+  <button class="fx-icon-btn d-lg-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#fxSidebar"
+          aria-controls="fxSidebar" aria-label="Open menu">
+    <i class="bi bi-list" aria-hidden="true"></i>
+  </button>
+  {% if has_endpoint('search.index') %}
+  <form class="fx-topbar-search" role="search" method="get" action="{{ url_for('search.index') }}">
+    <label for="global-search" class="visually-hidden">Search FORGE-X</label>
+    <i class="bi bi-search" aria-hidden="true"></i>
+    <input id="global-search" name="q" class="fx-input" type="search"
+           placeholder="Search case references, evidence IDs, reports" value="{{ request.args.get('q', '') }}">
+  </form>
+  {% endif %}
+  {% if current_user %}
+  <div class="dropdown fx-topbar-user">
+    <button class="fx-user-button" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+      <span class="fx-avatar" aria-hidden="true">{{ current_user.full_name|initials }}</span>
+      <span class="fx-user-button-text">
+        <span class="fx-user-button-name">{{ current_user.full_name }}</span>
+        <span class="fx-user-button-role">{{ current_user.roles|join(", ") }}</span>
+      </span>
+      <i class="bi bi-chevron-down" aria-hidden="true"></i>
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end">
+      {% if has_endpoint('auth.account') %}<li><a class="dropdown-item" href="{{ url_for('auth.account') }}">My account</a></li>{% endif %}
+      {% if has_endpoint('auth.logout') %}
+      <li>
+        <form method="post" action="{{ url_for('auth.logout') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="dropdown-item">Log out</button>
+        </form>
+      </li>
+      {% endif %}
+    </ul>
+  </div>
+  {% endif %}
+</header>

@@ -1,0 +1,36 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}Storage locations{% endblock %}
+{% block content %}
+{{ ui.page_header("Storage locations", "Vaults, evidence rooms, labs and benches that evidence can be moved to. Locations are never deleted, because custody history refers to them.") }}
+<div class="fx-detail-grid">
+  <section class="fx-card min-w-0">
+    <div class="fx-table-wrap"><table class="fx-table">
+      <thead><tr><th>Name</th><th>Type</th><th class="num">Items here</th><th class="num">Custody entries</th><th>Status</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
+      <tbody>{% for l in locations %}
+        <tr>
+          <td><span class="fw-medium">{{ l.location_name }}</span>{% if l.description %}<br><span class="fx-muted small">{{ l.description }}</span>{% endif %}</td>
+          <td>{{ l.location_type }}</td><td class="num">{{ l.items_here }}</td><td class="num">{{ l.custody_entries }}</td>
+          <td>{{ ui.badge("Active" if l.is_active else "Deactivated") }}</td>
+          <td class="text-nowrap">
+            <a class="fx-btn fx-btn-ghost fx-btn-sm" href="{{ url_for('locations.edit', location_id=l.location_id) }}">Edit</a>
+            <form method="post" action="{{ url_for('locations.set_status', location_id=l.location_id) }}" class="d-inline"
+                  data-fx-confirm="{{ ('Deactivate ' ~ l.location_name ~ '? New transfers to it will be refused.') if l.is_active else ('Activate ' ~ l.location_name ~ '?') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="action" value="{{ 'deactivate' if l.is_active else 'activate' }}">
+              <button type="submit" class="fx-btn fx-btn-ghost fx-btn-sm">{{ "Deactivate" if l.is_active else "Activate" }}</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}</tbody></table></div>
+  </section>
+  <section class="fx-card">
+    <div class="fx-card-h"><h2>Add a location</h2></div>
+    <form method="post" novalidate class="fx-card-b d-flex flex-column gap-3">
+      {{ form.hidden_tag() }}
+      {{ ui.field(form.location_name) }}{{ ui.field(form.location_type) }}{{ ui.field(form.description) }}
+      <div><button type="submit" class="fx-btn fx-btn-primary">Add location</button></div>
+    </form>
+  </section>
+</div>
+{% endblock %}

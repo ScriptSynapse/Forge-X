@@ -1,0 +1,19 @@
+{# FORGE-X logo: a hexagonal evidence shield with fingerprint ridges. #}
+{% macro logo(size=36) -%}
+<svg class="fx-logo" width="{{ size }}" height="{{ size }}" viewBox="0 0 40 40" fill="none" aria-hidden="true" focusable="false">
+  <path d="M20 3 L35 11.5 V28.5 L20 37 L5 28.5 V11.5 Z" stroke="#35BFFF" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M12.5 23c0-4.4 3.4-8 7.5-8s7.5 3.6 7.5 8" stroke="#1677FF" stroke-width="2" stroke-linecap="round"/>
+  <path d="M16 25.5c0-3 1.8-5.5 4-5.5s4 2.5 4 5.5" stroke="#F1F5F9" stroke-width="2" stroke-linecap="round"/>
+  <path d="M20 23.5v6" stroke="#35BFFF" stroke-width="2" stroke-linecap="round"/>
+</svg>
+{%- endmacro %}
+
+{% macro wordmark(size=36, subtitle=None, href=None) -%}
+<a class="fx-wordmark" href="{{ href or url_for('public.index') }}">
+  {{ logo(size) }}
+  <span class="fx-wordmark-text">
+    <span class="fx-wordmark-name">{{ app_name }}</span>
+    {% if subtitle %}<span class="fx-wordmark-sub">{{ subtitle }}</span>{% endif %}
+  </span>
+</a>
+{%- endmacro %}

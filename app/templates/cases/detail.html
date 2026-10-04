@@ -1,0 +1,240 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}{{ case.case_reference }}{% endblock %}
+{% macro tab_link(key, label, count=None) -%}
+<a class="fx-tab" href="{{ url_for('cases.detail', reference=case.case_reference, tab=key) }}" {% if tab == key %}aria-current="page"{% endif %}>
+  {{ label }}{% if count is not none %}<span class="fx-count">{{ count }}</span>{% endif %}</a>
+{%- endmacro %}
+
+{% block content %}
+{% set closed = case.status == "Closed" %}
+<nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('cases.list_cases') }}">Cases</a><span aria-hidden="true">/</span><span class="fx-mono" aria-current="page">{{ case.case_reference }}</span></nav>
+
+<div class="fx-page-header">
+  <div class="d-flex flex-column gap-2">
+    <span class="fx-mono text-info small">{{ case.case_reference }}</span>
+    <h1 class="fx-page-title">{{ case.title }}</h1>
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+      {{ ui.badge(case.status) }}{{ ui.priority(case.priority) }}{{ ui.tag(case.type_name) }}
+      <span class="fx-muted small">Registered {{ case.created_at|datetime }} by {{ case.created_by_name }}</span>
+    </div>
+  </div>
+  {% if manage %}
+  <div class="fx-page-actions">
+    <a class="fx-btn fx-btn-secondary" href="{{ url_for('cases.edit', reference=case.case_reference) }}">Edit case</a>
+    <a class="fx-btn fx-btn-secondary" href="{{ url_for('cases.detail', reference=case.case_reference, tab='investigators') }}">Investigators</a>
+    <a class="fx-btn fx-btn-danger" href="{{ url_for('cases.close', reference=case.case_reference) }}">Close case</a>
+  </div>
+  {% endif %}
+</div>
+
+{% if closed %}
+<div class="fx-alert b-blue" role="status"><i class="bi bi-lock" aria-hidden="true"></i>
+  <div><strong>This case was closed on {{ case.closed_at|datetime }}.</strong><p>Closed cases are read-only. Summary: {{ case.closure_summary }}</p></div></div>
+{% elif not manage %}
+<p class="fx-muted small m-0"><i class="bi bi-eye" aria-hidden="true"></i> You can view this case. Only an administrator or the lead investigator can change it.</p>
+{% endif %}
+
+<nav class="fx-tabs" aria-label="Case sections">
+  {{ tab_link("overview", "Overview") }}
+  {{ tab_link("evidence", "Evidence", counts.evidence) }}
+  {{ tab_link("investigators", "Investigators", counts.investigators) }}
+  {{ tab_link("examinations", "Examinations", counts.examinations) }}
+  {{ tab_link("reports", "Reports", counts.reports) }}
+  {{ tab_link("activity", "Activity history") }}
+</nav>
+
+{# ---------- Evidence table (used by Overview and Evidence tabs) ---------- #}
+{% macro evidence_table(rows) -%}
+  {% if rows %}
+  <div class="fx-table-wrap">
+    <table class="fx-table">
+      <thead><tr><th>Evidence ID</th><th>Type</th><th>Description</th><th>Status</th><th>Integrity</th><th>Custodian</th><th>Location</th></tr></thead>
+      <tbody>
+      {% for e in rows %}
+        <tr>
+          <td>{% if has_endpoint('evidence.detail') %}<a class="fx-mono" href="{{ url_for('evidence.detail', code=e.evidence_code) }}">{{ e.evidence_code }}</a>{% else %}<span class="fx-mono">{{ e.evidence_code }}</span>{% endif %}</td>
+          <td>{{ e.evidence_type }}</td><td>{{ e.description }}</td>
+          <td>{{ ui.badge(e.current_status) }}</td><td>{{ ui.badge(e.integrity_status) }}</td>
+          <td>{{ e.current_custodian }}</td><td>{{ e.current_location or "—" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    {{ ui.empty_state("No evidence registered for this case yet") }}
+  {% endif %}
+{%- endmacro %}
+
+{% macro activity_table(rows) -%}
+  {% if rows %}
+  <div class="fx-table-wrap">
+    <table class="fx-table">
+      <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Record</th><th>Outcome</th><th>Details</th></tr></thead>
+      <tbody>
+      {% for a in rows %}
+        <tr><td class="fx-mono text-nowrap">{{ a.created_at|datetime }}</td><td>{{ a.user_name or "System" }}</td>
+            <td class="fx-mono">{{ a.action }}</td><td class="fx-mono">{{ a.entity_ref or "" }}</td>
+            <td>{{ ui.badge(a.outcome) }}</td><td class="fx-muted">{{ a.details or "" }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}{{ ui.empty_state("No recorded activity yet") }}{% endif %}
+{%- endmacro %}
+
+{% if tab == "overview" %}
+<div class="fx-detail-grid">
+  <div class="d-flex flex-column gap-3 min-w-0">
+    <section class="fx-card"><div class="fx-card-h"><h2>Description</h2></div>
+      <div class="fx-card-b"><p class="fx-prose m-0">{{ case.description }}</p></div></section>
+    <section class="fx-card"><div class="fx-card-h"><h2>Evidence</h2>
+      {% if counts.evidence %}<a class="small" href="{{ url_for('cases.detail', reference=case.case_reference, tab='evidence') }}">View all</a>{% endif %}</div>
+      {{ evidence_table(evidence[:6]) }}</section>
+  </div>
+  <div class="d-flex flex-column gap-3 min-w-0">
+    <section class="fx-card"><div class="fx-card-h"><h2>Case details</h2></div>
+      <div class="fx-card-b"><dl class="fx-dl">
+        <dt>Reference</dt><dd class="fx-mono">{{ case.case_reference }}</dd>
+        <dt>Type</dt><dd>{{ case.type_name }}</dd>
+        <dt>Priority</dt><dd>{{ case.priority }}</dd>
+        <dt>Status</dt><dd>{{ case.status }}</dd>
+        <dt>Lead</dt><dd>{{ case.lead_name or "No lead assigned" }}</dd>
+        <dt>Registered</dt><dd>{{ case.created_at|datetime }}</dd>
+        <dt>Last updated</dt><dd>{{ case.updated_at|datetime }}</dd>
+        <dt>Closed</dt><dd>{{ case.closed_at|datetime if case.closed_at else "Not closed" }}</dd>
+      </dl></div>
+      {% if manage %}
+      <form method="post" action="{{ url_for('cases.change_status', reference=case.case_reference) }}" class="fx-card-b border-top d-flex gap-2 align-items-end">
+        {{ status_form.hidden_tag() }}
+        <div class="flex-grow-1">{{ status_form.status.label(class_="fx-label") }}{{ status_form.status(class_="fx-input") }}</div>
+        <button type="submit" class="fx-btn fx-btn-secondary">Change status</button>
+      </form>
+      {% endif %}
+    </section>
+    <section class="fx-card"><div class="fx-card-h"><h2>Investigators</h2></div>
+      <ul class="fx-role-list">
+        {% for i in investigators %}
+        <li><span class="d-flex align-items-center gap-2"><span class="fx-avatar" aria-hidden="true">{{ i.full_name|initials }}</span>
+            <span class="d-flex flex-column"><span class="fw-medium">{{ i.full_name }}</span><span class="fx-muted small">Assigned {{ i.assigned_at|date }}</span></span></span>
+            {% if i.is_lead %}<span class="fx-tag fx-tag-lead">Lead</span>{% endif %}</li>
+        {% else %}<li class="fx-muted">No investigators assigned</li>{% endfor %}
+      </ul>
+    </section>
+    <section class="fx-card"><div class="fx-card-h"><h2>Recent activity</h2>
+      <a class="small" href="{{ url_for('cases.detail', reference=case.case_reference, tab='activity') }}">All activity</a></div>
+      <ol class="fx-mini-activity">
+        {% for a in activity %}<li><span>{{ a.user_name or "System" }}: <span class="fx-mono">{{ a.action }}</span>{% if a.entity_ref and a.entity_ref != case.case_reference %} <span class="fx-mono">{{ a.entity_ref }}</span>{% endif %}</span>
+          <span class="fx-mono fx-muted small">{{ a.created_at|datetime }}</span></li>
+        {% else %}<li class="fx-muted">No recorded activity yet</li>{% endfor %}
+      </ol>
+    </section>
+  </div>
+</div>
+
+{% elif tab == "evidence" %}
+<section class="fx-card">
+  <div class="fx-card-h"><h2>Evidence</h2>
+    {% if can_add_evidence %}<a class="fx-btn fx-btn-secondary fx-btn-sm" href="{{ url_for('evidence.create', case=case.case_reference) }}">Register evidence</a>{% endif %}</div>
+  {{ evidence_table(evidence) }}</section>
+
+{% elif tab == "investigators" %}
+<div class="fx-detail-grid">
+  <section class="fx-card min-w-0">
+    <div class="fx-card-h"><h2>Assigned investigators</h2></div>
+    <div class="fx-table-wrap">
+      <table class="fx-table">
+        <thead><tr><th>Name</th><th>Role on case</th><th>Assigned</th><th>By</th>{% if manage %}<th><span class="visually-hidden">Actions</span></th>{% endif %}</tr></thead>
+        <tbody>
+        {% for i in investigators %}
+          <tr>
+            <td><span class="fw-medium">{{ i.full_name }}</span> <span class="fx-mono fx-muted small">{{ i.username }}</span>
+                {% if i.account_status != "Active" %}{{ ui.badge(i.account_status) }}{% endif %}</td>
+            <td>{% if i.is_lead %}<span class="fx-tag fx-tag-lead">Lead</span>{% else %}Investigator{% endif %}</td>
+            <td class="text-nowrap">{{ i.assigned_at|datetime }}</td>
+            <td>{{ i.assigned_by_name or "—" }}</td>
+            {% if manage %}
+            <td class="text-nowrap">
+              {% if not i.is_lead %}
+              <form method="post" action="{{ url_for('cases.set_lead', reference=case.case_reference, user_id=i.user_id) }}" class="d-inline"
+                    data-fx-confirm="Make {{ i.full_name }} the lead investigator?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="fx-btn fx-btn-ghost fx-btn-sm">Make lead</button></form>
+              <form method="post" action="{{ url_for('cases.remove_investigator', reference=case.case_reference, user_id=i.user_id) }}" class="d-inline"
+                    data-fx-confirm="Remove {{ i.full_name }} from this case?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="fx-btn fx-btn-ghost fx-btn-sm">Remove</button></form>
+              {% else %}<span class="fx-muted small">Assign a new lead to change</span>{% endif %}
+            </td>
+            {% endif %}
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% if manage %}
+  <section class="fx-card">
+    <div class="fx-card-h"><h2>Assign an investigator</h2></div>
+    {% if assign_form.user_id.choices %}
+    <form method="post" action="{{ url_for('cases.assign', reference=case.case_reference) }}" class="fx-card-b d-flex flex-column gap-3">
+      {{ assign_form.hidden_tag() }}
+      <div>{{ assign_form.user_id.label(class_="fx-label") }}{{ assign_form.user_id(class_="fx-input") }}</div>
+      {{ ui.check_field(assign_form.make_lead) }}
+      <div><button type="submit" class="fx-btn fx-btn-primary">Assign</button></div>
+      <p class="fx-help m-0">Only active users with the Investigator role can be assigned.</p>
+    </form>
+    {% else %}
+      {{ ui.empty_state("Every active investigator is already assigned") }}
+    {% endif %}
+  </section>
+  {% endif %}
+</div>
+
+{% elif tab == "examinations" %}
+<section class="fx-card">
+  <div class="fx-card-h"><h2>Examinations</h2>
+    {% if can_add_work %}<a class="fx-btn fx-btn-secondary fx-btn-sm" href="{{ url_for('examinations.create', case=case.case_reference) }}">New examination</a>{% endif %}</div>
+  {% if examinations %}
+  <div class="fx-table-wrap">
+    <table class="fx-table">
+      <thead><tr><th>Exam ID</th><th>Type</th><th>Examiner</th><th>Status</th><th class="num">Evidence</th><th>Due</th></tr></thead>
+      <tbody>
+      {% for x in examinations %}
+        <tr><td><a class="fx-mono" href="{{ url_for('examinations.detail', code=x.examination_code) }}">{{ x.examination_code }}</a></td><td>{{ x.examination_type }}</td><td>{{ x.examiner_name }}</td>
+            <td>{{ ui.badge(x.status) }}</td><td class="num">{{ x.evidence_count }}</td>
+            <td class="text-nowrap {{ 'text-danger-emphasis fw-medium' if x.is_overdue }}">{{ (x.due_date|date) if x.due_date else "—" }}{% if x.is_overdue %} (overdue){% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}{{ ui.empty_state("No examinations for this case yet") }}{% endif %}
+</section>
+
+{% elif tab == "reports" %}
+<section class="fx-card">
+  <div class="fx-card-h"><h2>Reports</h2>
+    {% if can_add_work %}<a class="fx-btn fx-btn-secondary fx-btn-sm" href="{{ url_for('reports.create', case=case.case_reference) }}">New report</a>{% endif %}</div>
+  {% if reports %}
+  <div class="fx-table-wrap">
+    <table class="fx-table">
+      <thead><tr><th>Report ID</th><th>Title</th><th>Author</th><th class="num">Version</th><th>Status</th><th>Updated</th></tr></thead>
+      <tbody>
+      {% for r in reports %}
+        <tr><td><a class="fx-mono" href="{{ url_for('reports.detail', code=r.report_code) }}">{{ r.report_code }}</a></td><td>{{ r.title }}</td><td>{{ r.author_name }}</td>
+            <td class="num">v{{ r.version_no or 1 }}</td><td>{{ ui.badge(r.status) }}</td><td class="text-nowrap">{{ r.updated_at|date }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}{{ ui.empty_state("No reports for this case yet") }}{% endif %}
+</section>
+
+{% elif tab == "activity" %}
+<section class="fx-card">
+  <div class="fx-card-h"><h2>Activity history</h2><span class="fx-muted small">This case, its evidence, examinations and reports. Newest first.</span></div>
+  {{ activity_table(activity) }}
+</section>
+{% endif %}
+{% endblock %}

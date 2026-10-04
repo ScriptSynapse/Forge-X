@@ -1,29 +1,20 @@
-# Dependencies
-node_modules/
-**/node_modules/
-
-# Environment
+# Secrets
 .env
-.env.local
-.env.*.local
 
-# Build output
-dist/
-build/
-**/dist/
-**/build/
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
 
-# Logs
+# Local runtime files
+instance/
 *.log
-npm-debug.log*
 
-# OS
-.DS_Store
-Thumbs.db
-
-# IDE
+# Editors / OS
 .vscode/
 .idea/
-
-# MySQL dumps (avoid committing large local dumps)
-*.sql.bak
+Thumbs.db
+.DS_Store

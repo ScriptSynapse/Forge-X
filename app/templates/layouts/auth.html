@@ -1,0 +1,32 @@
+{# Split-screen layout for login, password change and other account screens. #}
+{% extends "base.html" %}
+{% from "macros/brand.html" import wordmark %}
+{% block body_class %}fx-auth-page{% endblock %}
+{% block body %}
+<div class="fx-auth">
+  <aside class="fx-auth-aside">
+    <svg class="fx-auth-print" aria-hidden="true" viewBox="0 0 400 400" fill="none" stroke="#1677FF" stroke-opacity="0.2" stroke-width="2" stroke-linecap="round">
+      <circle cx="200" cy="200" r="30" stroke-dasharray="120 40"/><circle cx="200" cy="200" r="52" stroke-dasharray="200 26 60 20"/>
+      <circle cx="200" cy="200" r="74" stroke-dasharray="280 30 90 40"/><circle cx="200" cy="200" r="96" stroke-dasharray="400 40 120 44"/>
+      <circle cx="200" cy="200" r="118" stroke-dasharray="420 30 220 70"/><circle cx="200" cy="200" r="140" stroke-dasharray="560 60 180 80"/>
+      <circle cx="200" cy="200" r="162" stroke-dasharray="660 90 200 70"/><circle cx="200" cy="200" r="184" stroke-dasharray="760 70 260 66"/>
+    </svg>
+    {{ wordmark(40) }}
+    <div class="fx-auth-pitch">
+      <h2>Evidence handling you can account for.</h2>
+      <ul>
+        <li><i class="bi bi-list-check" aria-hidden="true"></i>Every login attempt is recorded in the audit log.</li>
+        <li><i class="bi bi-people" aria-hidden="true"></i>Accounts and roles are granted by your lab administrator.</li>
+        <li><i class="bi bi-lock" aria-hidden="true"></i>Your session ends as soon as you log out.</li>
+      </ul>
+    </div>
+    <p class="fx-auth-foot">Academic project. Demonstration data is synthetic.</p>
+  </aside>
+  <main id="main" class="fx-auth-main" tabindex="-1">
+    <div class="fx-auth-panel">
+      {% include "partials/_flash.html" %}
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</div>
+{% endblock %}

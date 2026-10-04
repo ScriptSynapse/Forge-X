@@ -1,0 +1,176 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}{{ item.evidence_code }}{% endblock %}
+{% macro tab_link(key, label, count=None) -%}
+<a class="fx-tab" href="{{ url_for('evidence.detail', code=item.evidence_code, tab=key) }}" {% if tab == key %}aria-current="page"{% endif %}>
+  {{ label }}{% if count is not none %}<span class="fx-count">{{ count }}</span>{% endif %}</a>
+{%- endmacro %}
+
+{% block content %}
+<nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('evidence.list_evidence') }}">Evidence</a><span aria-hidden="true">/</span><span class="fx-mono" aria-current="page">{{ item.evidence_code }}</span></nav>
+
+<div class="fx-page-header">
+  <div class="d-flex flex-column gap-2">
+    <span class="fx-mono text-info small">{{ item.evidence_code }}</span>
+    <h1 class="fx-page-title">{{ item.description }}</h1>
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+      {{ ui.tag(item.type_name) }}{{ ui.badge(item.current_status) }}{{ ui.badge(item.integrity_status) }}
+      <span class="fx-muted small">Case <a class="fx-mono" href="{{ url_for('cases.detail', reference=item.case_reference) }}">{{ item.case_reference }}</a></span>
+    </div>
+  </div>
+  <div class="fx-page-actions">
+    {% if can_edit %}<a class="fx-btn fx-btn-ghost" href="{{ url_for('evidence.edit', code=item.evidence_code) }}">Edit details</a>{% endif %}
+    {% if actions.record_hash %}<a class="fx-btn fx-btn-secondary" href="{{ url_for('integrity.record', code=item.evidence_code) }}">Record hash</a>{% endif %}
+    {% if actions.verify %}<a class="fx-btn fx-btn-secondary" href="{{ url_for('integrity.verify', code=item.evidence_code) }}">Verify hash</a>{% endif %}
+    {% if actions.transfer %}<a class="fx-btn fx-btn-primary" href="{{ url_for('custody.transfer', code=item.evidence_code) }}">Transfer custody</a>{% endif %}
+  </div>
+</div>
+{% if item.case_status == "Closed" %}
+<p class="fx-muted small m-0"><i class="bi bi-lock" aria-hidden="true"></i> This item belongs to a closed case, so its details are read-only.</p>
+{% endif %}
+
+<nav class="fx-tabs" aria-label="Evidence sections">
+  {{ tab_link("overview", "Overview") }}{{ tab_link("hashes", "Hash information", counts.hashes) }}
+  {{ tab_link("custody", "Chain of custody", counts.custody) }}{{ tab_link("examinations", "Examinations", counts.examinations) }}
+  {{ tab_link("metadata", "Related metadata") }}
+</nav>
+
+{% macro custody_timeline(entries) -%}
+<ol class="fx-timeline">
+  {% for e in entries %}
+  <li class="fx-timeline-item{% if e.corrects_custody_id %} is-correction{% endif %}{% if e.is_current %} is-current{% endif %}">
+    <span class="fx-timeline-node" aria-hidden="true">{{ e.step }}</span>
+    <div class="fx-timeline-card">
+      <div class="fx-timeline-head">
+        <span class="fw-semibold">{{ e.action }}</span>
+        {% if e.corrects_custody_id %}<span class="fx-badge b-amber">Correction of #{{ e.corrects_custody_id }}</span>{% endif %}
+        {% for c in e.corrected_by %}<span class="fx-badge b-slate">Corrected by #{{ c }}</span>{% endfor %}
+        {% if e.is_current %}<span class="fx-badge b-cyan">Latest</span>{% endif %}
+        <span class="fx-mono fx-muted small ms-auto">{{ e.occurred_at|datetime }}</span>
+      </div>
+      <p class="mb-0 mt-2">{% if e.from_name and e.from_name != e.to_name %}{{ e.from_name }} <i class="bi bi-arrow-right" aria-label="to"></i> {{ e.to_name }}
+        {% elif e.from_name %}Held by {{ e.to_name }}, no change of custodian{% else %}Taken into custody by {{ e.to_name }}{% endif %}</p>
+      <div class="d-flex flex-wrap gap-2 mt-2"><span class="fx-tag">{{ e.location }}</span><span class="fx-tag">{{ e.evidence_condition }}</span>
+        {% if e.seal_number %}<span class="fx-tag fx-mono">Seal {{ e.seal_number }}</span>{% endif %}</div>
+      <p class="mb-0 mt-2 small">{{ e.reason }}</p>
+      <p class="mb-0 mt-2 fx-muted small">Recorded by {{ e.recorded_by_name }}, entry <span class="fx-mono">#{{ e.custody_id }}</span>{% if e.recorded_at != e.occurred_at %}, recorded {{ e.recorded_at|datetime }}{% endif %}</p>
+      {% if actions.correct_custody %}<div class="fx-timeline-actions"><a class="small" href="{{ url_for('custody.correct', code=item.evidence_code, custody_id=e.custody_id) }}">Record a correction to this entry</a></div>{% endif %}
+    </div>
+  </li>
+  {% endfor %}
+</ol>
+{%- endmacro %}
+
+{% macro hash_value(value) -%}<code class="fx-hash">{{ value }}</code>{%- endmacro %}
+
+{% if tab == "overview" %}
+<div class="fx-detail-grid">
+  <div class="d-flex flex-column gap-3 min-w-0">
+    <section class="fx-card"><div class="fx-card-h"><h2>Details</h2></div>
+      <div class="fx-card-b"><dl class="fx-dl">
+        <dt>Evidence type</dt><dd>{{ item.type_name }}</dd>
+        <dt>Case</dt><dd><a class="fx-mono" href="{{ url_for('cases.detail', reference=item.case_reference) }}">{{ item.case_reference }}</a> {{ item.case_title }}</dd>
+        <dt>Source details</dt><dd>{{ item.source_details or "—" }}</dd>
+        <dt>Size</dt><dd>{{ item.size_bytes|filesize if item.size_bytes is not none else "—" }}</dd>
+        <dt>Collected</dt><dd>{{ item.collected_at|datetime }}, by {{ item.collected_by_name }}</dd>
+        <dt>Collection site</dt><dd>{{ item.collection_site }}</dd>
+        <dt>Condition at collection</dt><dd>{{ item.collection_condition }}</dd>
+        <dt>Registered</dt><dd>{{ item.registered_at|datetime }}</dd>
+      </dl></div></section>
+    <section class="fx-card"><div class="fx-card-h"><h2>Integrity</h2>{{ ui.badge(item.integrity_status) }}</div>
+      <div class="fx-card-b d-flex flex-column gap-2">
+        {% if item.current_hash_value %}
+          <span class="small fx-muted">Current reference SHA-256</span>{{ hash_value(item.current_hash_value) }}
+          <span class="small fx-muted">{% if item.last_verified_at %}Last checked {{ item.last_verified_at|datetime }}.{% else %}Never checked against a sample yet.{% endif %}
+            <a href="{{ url_for('evidence.detail', code=item.evidence_code, tab='hashes') }}">Hash history</a></span>
+        {% else %}<p class="m-0 fx-muted">No reference hash has been recorded for this item.</p>{% endif %}
+        <p class="fx-help m-0">A matching hash shows the content was identical when it was compared. On its own it doesn't prove authenticity, ownership or a complete custody history.</p>
+      </div></section>
+  </div>
+  <div class="d-flex flex-column gap-3 min-w-0">
+    <section class="fx-card"><div class="fx-card-h"><h2>Current custody</h2></div>
+      <div class="fx-card-b d-flex flex-column gap-3">
+        <div class="d-flex align-items-center gap-2"><span class="fx-avatar" aria-hidden="true">{{ item.custodian_name|initials }}</span><span class="fw-semibold">{{ item.custodian_name }}</span></div>
+        <dl class="fx-dl fx-dl-tight"><dt>Location</dt><dd>{{ item.location_name or "Not in a storage location" }}</dd>
+          <dt>Status</dt><dd>{{ item.current_status }}</dd><dt>Since</dt><dd>{{ held_since|datetime }}</dd></dl>
+        <a class="small" href="{{ url_for('evidence.detail', code=item.evidence_code, tab='custody') }}">Full chain of custody ({{ counts.custody }} entries)</a>
+      </div></section>
+    <section class="fx-card"><div class="fx-card-h"><h2>Examinations</h2></div>
+      <ul class="fx-role-list">
+        {% for x in examinations %}<li><span class="d-flex flex-column"><a class="fx-mono small" href="{{ url_for('examinations.detail', code=x.examination_code) }}">{{ x.examination_code }}</a><span>{{ x.examination_type }}</span><span class="fx-muted small">{{ x.examiner_name }}</span></span>{{ ui.badge(x.status) }}</li>
+        {% else %}<li class="fx-muted">Not linked to any examination yet</li>{% endfor %}
+      </ul></section>
+  </div>
+</div>
+
+{% elif tab == "hashes" %}
+<section class="fx-card"><div class="fx-card-h"><h2>Recorded reference hashes</h2>
+  <span class="d-flex gap-2 align-items-center"><span class="fx-muted small">Never edited. A correction is a new hash that supersedes the old one.</span>
+  {% if actions.correct_hash %}<a class="fx-btn fx-btn-ghost fx-btn-sm" href="{{ url_for('integrity.correct', code=item.evidence_code) }}">Correct hash</a>{% endif %}</span></div>
+  {% if hashes %}
+  <ul class="fx-hash-list">
+    {% for h in hashes %}
+    <li class="{{ 'is-superseded' if h.superseded }}">
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        <span class="fw-semibold">{{ h.algorithm }}</span>
+        {% if h.superseded %}<span class="fx-badge b-slate">Superseded</span>{% else %}<span class="fx-badge b-cyan">Current</span>{% endif %}
+        {% if h.supersedes_hash_id %}<span class="fx-badge b-amber">Corrects hash #{{ h.supersedes_hash_id }}</span>{% endif %}
+        <span class="fx-mono fx-muted small ms-auto">#{{ h.hash_id }}, {{ h.recorded_at|datetime }}, {{ h.recorded_by_name }}</span>
+      </div>
+      {{ hash_value(h.hash_value) }}
+      <p class="small fx-muted m-0">{{ "Computed at acquisition" if h.source == "Computed" else "Entered manually" }}{% if h.source_notes %}: {{ h.source_notes }}{% endif %}</p>
+      {% if h.correction_reason %}<p class="small m-0">Reason for correction: {{ h.correction_reason }}</p>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+    {% call ui.empty_state("No hash recorded yet", "Record the original SHA-256 so later checks have something to compare against.") %}
+      {% if actions.record_hash %}<a class="fx-btn fx-btn-secondary fx-btn-sm" href="{{ url_for('integrity.record', code=item.evidence_code) }}">Record hash</a>{% endif %}
+    {% endcall %}{% endif %}
+</section>
+<section class="fx-card"><div class="fx-card-h"><h2>Verification history</h2></div>
+  {% if verifications %}
+  <div class="fx-table-wrap"><table class="fx-table">
+    <thead><tr><th>Checked</th><th>By</th><th>Against hash</th><th>Method</th><th>Result</th></tr></thead>
+    <tbody>{% for v in verifications %}
+      <tr><td class="fx-mono text-nowrap">{{ v.verified_at|datetime }}</td><td>{{ v.verified_by_name }}</td><td class="fx-mono">#{{ v.hash_id }}</td>
+          <td>{{ v.method }}{% if v.sample_file_name %} <span class="fx-mono fx-muted small">{{ v.sample_file_name }}</span>{% endif %}</td><td>{{ ui.badge(v.result) }}</td></tr>
+    {% endfor %}</tbody></table></div>
+  {% else %}
+    {% call ui.empty_state("Never verified", "Verify the item against a sample file to record its first check.") %}
+      {% if actions.verify %}<a class="fx-btn fx-btn-secondary fx-btn-sm" href="{{ url_for('integrity.verify', code=item.evidence_code) }}">Verify hash</a>{% endif %}
+    {% endcall %}{% endif %}
+</section>
+
+{% elif tab == "custody" %}
+<section class="fx-card"><div class="fx-card-h"><h2>Chain of custody</h2><span class="fx-muted small">Oldest first. Entries can't be edited or deleted; mistakes are fixed with a linked correction.</span></div>
+  <div class="fx-card-b">{{ custody_timeline(timeline) }}</div></section>
+
+{% elif tab == "examinations" %}
+<section class="fx-card">
+  {% if examinations %}
+  <div class="fx-table-wrap"><table class="fx-table">
+    <thead><tr><th>Exam ID</th><th>Type</th><th>Examiner</th><th>Status</th><th>Due</th></tr></thead>
+    <tbody>{% for x in examinations %}
+      <tr><td><a class="fx-mono" href="{{ url_for('examinations.detail', code=x.examination_code) }}">{{ x.examination_code }}</a></td><td>{{ x.examination_type }}</td><td>{{ x.examiner_name }}</td><td>{{ ui.badge(x.status) }}</td>
+          <td class="{{ 'text-danger-emphasis fw-medium' if x.is_overdue }}">{{ (x.due_date|date) if x.due_date else "—" }}{% if x.is_overdue %} (overdue){% endif %}</td></tr>
+    {% endfor %}</tbody></table></div>
+  {% else %}{{ ui.empty_state("Not linked to any examination yet") }}{% endif %}
+</section>
+
+{% elif tab == "metadata" %}
+<section class="fx-card"><div class="fx-card-h"><h2>Related metadata</h2><span class="fx-muted small">How this item is stored in MySQL.</span></div>
+  <div class="fx-card-b"><dl class="fx-dl">
+    <dt>Internal ID</dt><dd class="fx-mono">evidence_id = {{ item.evidence_id }}</dd>
+    <dt>Evidence ID</dt><dd class="fx-mono">{{ item.evidence_code }}</dd>
+    <dt>Type description</dt><dd>{{ item.type_description or "—" }}</dd>
+    <dt>Size in bytes</dt><dd class="fx-mono">{{ "{:,}".format(item.size_bytes) if item.size_bytes is not none else "—" }}</dd>
+    <dt>Registered</dt><dd>{{ item.registered_at|datetime }}</dd>
+    <dt>Last updated</dt><dd>{{ item.updated_at|datetime }}</dd>
+    <dt>Seals recorded</dt><dd>{% set seals = timeline|selectattr("seal_number")|map(attribute="seal_number")|unique|list %}{{ seals|join(", ") if seals else "None" }}</dd>
+    <dt>Custody entries</dt><dd>{{ counts.custody }} ({{ timeline|selectattr("corrects_custody_id")|list|length }} corrections)</dd>
+    <dt>Recorded hashes</dt><dd>{{ counts.hashes }}</dd>
+    <dt>Integrity status</dt><dd>{{ item.integrity_status }} (from view <span class="fx-mono">v_evidence_integrity</span>)</dd>
+  </dl></div></section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,30 @@
+/* FORGE-X dashboard */
+.fx-stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 16px; }
+.fx-stat { display: flex; flex-direction: column; gap: 8px; padding: 18px 20px; color: var(--fx-text); text-decoration: none; }
+a.fx-stat:hover { border-color: var(--fx-cyan); color: var(--fx-text); }
+.fx-stat-label { font-size: 13px; color: var(--fx-text-2); }
+.fx-stat-value { font-size: 30px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.fx-stat-value.is-cyan { color: var(--fx-cyan); }
+.fx-stat-value.is-amber { color: var(--fx-warning); }
+.fx-stat-value.is-green { color: var(--fx-success); }
+.fx-stat-note { font-size: 12px; color: var(--fx-text-2); }
+.fx-stat-inline { display: flex; align-items: baseline; gap: 8px; }
+.fx-integrity-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--fx-border); }
+.fx-integrity-bar .seg-verified { background: var(--fx-success); }
+.fx-integrity-bar .seg-failed { background: var(--fx-danger); }
+.fx-integrity-bar .seg-pending { background: var(--fx-warning); }
+
+.fx-attention-list { list-style: none; margin: 0; padding: 14px 20px; display: flex; flex-wrap: wrap; gap: 12px 28px; font-size: 14px; }
+.fx-attention-list li { display: flex; align-items: center; gap: 10px; }
+.fx-attention-list .fx-badge::before { display: none; }
+
+.fx-chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 16px; }
+.fx-chart { min-height: 300px; position: relative; }
+.fx-chart-state { display: flex; flex-direction: column; gap: 12px; justify-content: center; min-height: 260px; }
+.fx-chart-state[hidden], .fx-chart-canvas[hidden] { display: none; }
+.fx-chart-canvas { position: relative; height: 280px; }
+.fx-chart-card:nth-child(3) .fx-chart-canvas { height: 340px; }
+
+.fx-metric-notes summary { cursor: pointer; color: var(--fx-text-2); font-size: 13px; }
+.fx-metric-notes summary:hover { color: var(--fx-text); }
+.fx-metric-notes .fx-dl { grid-template-columns: minmax(130px, 180px) minmax(0, 1fr); }

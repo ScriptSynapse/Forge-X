@@ -1,0 +1,82 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}Cases{% endblock %}
+{% block content %}
+{% call ui.page_header("Cases", page.total ~ " case" ~ ("s" if page.total != 1 else "") ~ (" matching your filters" if filters.active else "") ~ ". " ~ scope.label ~ ".") %}
+  {% if can_create %}<a class="fx-btn fx-btn-primary" href="{{ url_for('cases.create') }}"><i class="bi bi-plus-lg" aria-hidden="true"></i>New case</a>{% endif %}
+{% endcall %}
+
+<nav class="fx-status-tabs" aria-label="Filter by status">
+  {% set base = filters.as_args() %}
+  {% set _ = base.pop("status", None) %}
+  <a class="fx-tab" href="{{ url_for('cases.list_cases', **base) }}" {% if not filters.status %}aria-current="page"{% endif %}>All<span class="fx-count">{{ counts.values()|sum }}</span></a>
+  {% for s in statuses %}
+  <a class="fx-tab" href="{{ url_for('cases.list_cases', status=s, **base) }}" {% if filters.status == s %}aria-current="page"{% endif %}>{{ s }}<span class="fx-count">{{ counts[s] }}</span></a>
+  {% endfor %}
+</nav>
+
+<section class="fx-card">
+  <form method="get" action="{{ url_for('cases.list_cases') }}" class="fx-filter-bar" role="search">
+    {% if filters.status %}<input type="hidden" name="status" value="{{ filters.status }}">{% endif %}
+    <div class="fx-filter-grow">
+      <label class="fx-label" for="f-q">Search</label>
+      <input id="f-q" name="q" class="fx-input" type="search" value="{{ filters.q }}" placeholder="Reference or title">
+    </div>
+    <div>
+      <label class="fx-label" for="f-priority">Priority</label>
+      <select id="f-priority" name="priority" class="fx-input">
+        <option value="">All priorities</option>
+        {% for p in priorities|reverse %}<option value="{{ p }}" {% if filters.priority == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="fx-label" for="f-type">Case type</label>
+      <select id="f-type" name="type" class="fx-input">
+        <option value="">All types</option>
+        {% for t in types %}<option value="{{ t.case_type_id }}" {% if filters.case_type_id == t.case_type_id %}selected{% endif %}>{{ t.type_name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="fx-label" for="f-sort">Sort by</label>
+      <select id="f-sort" name="sort" class="fx-input">
+        {% for key, (label, _sql) in sorts.items() %}<option value="{{ key }}" {% if filters.sort == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="fx-filter-actions">
+      <button type="submit" class="fx-btn fx-btn-secondary">Apply</button>
+      {% if filters.active or filters.sort != "newest" %}<a class="fx-btn fx-btn-ghost" href="{{ url_for('cases.list_cases') }}">Clear</a>{% endif %}
+    </div>
+  </form>
+
+  {% if page.items %}
+  <div class="fx-table-wrap">
+    <table class="fx-table">
+      <thead><tr><th>Reference</th><th>Title</th><th>Type</th><th>Priority</th><th>Status</th><th>Lead investigator</th><th class="num">Evidence</th><th>Registered</th></tr></thead>
+      <tbody>
+      {% for c in page.items %}
+        <tr>
+          <td><a class="fx-mono" href="{{ url_for('cases.detail', reference=c.case_reference) }}">{{ c.case_reference }}</a></td>
+          <td>{{ c.title }}</td>
+          <td>{{ c.type_name }}</td>
+          <td>{{ ui.priority(c.priority) }}</td>
+          <td>{{ ui.badge(c.status) }}</td>
+          <td>{{ c.lead_name or "—" }}</td>
+          <td class="num">{{ c.evidence_count }}</td>
+          <td class="text-nowrap">{{ c.created_at|date }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {{ ui.pagination(page, "cases.list_cases", filters.as_args(), noun="cases") }}
+  {% else %}
+    {% if filters.active %}
+      {% call ui.empty_state("No cases match these filters", "Try a different search or clear the filters.") %}
+        <a class="fx-btn fx-btn-secondary fx-btn-sm" href="{{ url_for('cases.list_cases') }}">Clear filters</a>
+      {% endcall %}
+    {% else %}
+      {{ ui.empty_state("No cases yet", "Cases you register, or are assigned to, appear here.") }}
+    {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

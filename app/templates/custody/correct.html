@@ -1,0 +1,27 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}Correct entry #{{ entry.custody_id }}{% endblock %}
+{% block content %}
+<nav class="fx-crumb" aria-label="Breadcrumb"><a class="fx-mono" href="{{ url_for('evidence.detail', code=item.evidence_code, tab='custody') }}">{{ item.evidence_code }}</a><span aria-hidden="true">/</span><span aria-current="page">Correct entry #{{ entry.custody_id }}</span></nav>
+{{ ui.page_header("Record a custody correction", "Entry #" ~ entry.custody_id ~ " stays exactly as it is. The correction is added as a new entry linked to it.") }}
+<div class="fx-detail-grid">
+  <form method="post" novalidate class="fx-card fx-card-b d-flex flex-column gap-3 min-w-0" data-fx-busy="Recording…">
+    {{ form.hidden_tag() }}
+    <p class="m-0">The action (<strong>{{ entry.action }}</strong>), previous custodian and time ({{ entry.occurred_at|datetime }}) are kept from the original entry. Correct who received the item, where it went and its condition.</p>
+    <div class="fx-form-grid">{{ ui.field(form.to_user_id) }}{{ ui.field(form.location_id) }}</div>
+    {{ ui.field(form.location_note) }}
+    <div class="fx-form-grid">{{ ui.field(form.condition) }}{{ ui.field(form.seal_number) }}</div>
+    {{ ui.field(form.reason) }}
+    <div class="d-flex flex-wrap gap-2"><button type="submit" class="fx-btn fx-btn-primary">Record correction</button>
+      <a class="fx-btn fx-btn-ghost" href="{{ url_for('evidence.detail', code=item.evidence_code, tab='custody') }}">Cancel</a></div>
+  </form>
+  <section class="fx-card">
+    <div class="fx-card-h"><h2>Original entry #{{ entry.custody_id }}</h2></div>
+    <div class="fx-card-b"><dl class="fx-dl fx-dl-tight">
+      <dt>Action</dt><dd>{{ entry.action }}</dd><dt>When</dt><dd>{{ entry.occurred_at|datetime }}</dd>
+      <dt>From</dt><dd>{{ entry.from_name or "—" }}</dd><dt>To</dt><dd>{{ entry.to_name }}</dd>
+      <dt>Location</dt><dd>{{ entry.location }}</dd><dt>Condition</dt><dd>{{ entry.evidence_condition }}</dd>
+      <dt>Reason</dt><dd>{{ entry.reason }}</dd><dt>Recorded by</dt><dd>{{ entry.recorded_by_name }}</dd></dl></div>
+  </section>
+</div>
+{% endblock %}

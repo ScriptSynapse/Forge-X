@@ -1,0 +1,29 @@
+{% extends "layouts/auth.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}Request access{% endblock %}
+{% block content %}
+<form method="post" novalidate class="fx-auth-form" data-fx-busy="Submitting…">
+  {{ form.hidden_tag() }}
+  <div class="fx-auth-heading">
+    <h1>Request access</h1>
+    <p>Your request goes to a FORGE-X administrator for review. You can log in once it's approved.</p>
+  </div>
+  {% if form.errors %}
+  <div class="fx-alert b-red" role="alert"><i class="bi bi-x-circle" aria-hidden="true"></i>
+    <div><strong>Fix {{ form.errors|length }} field{{ "s" if form.errors|length != 1 }} to continue.</strong><p>Your other details have been kept.</p></div></div>
+  {% endif %}
+  <div class="fx-form-grid">
+    {{ ui.field(form.full_name) }}
+    {{ ui.field(form.email) }}
+  </div>
+  {{ ui.field(form.username, help="3 to 30 characters: letters, numbers, dots and underscores.") }}
+  <div class="fx-form-grid">
+    {{ ui.field(form.password, help="At least 12 characters, with a letter and a number. Don't include your username.") }}
+    {{ ui.field(form.confirm) }}
+  </div>
+  {{ ui.field(form.reason, help="Optional. For example, your role in the lab or the course you're working on.") }}
+  <p class="fx-help m-0"><i class="bi bi-info-circle" aria-hidden="true"></i> Your role is assigned by an administrator when your request is approved.</p>
+  <button type="submit" class="fx-btn fx-btn-primary fx-btn-lg w-100">Submit request</button>
+  <div class="fx-auth-links"><p>Already approved? <a href="{{ url_for('auth.login') }}">Log in</a></p></div>
+</form>
+{% endblock %}

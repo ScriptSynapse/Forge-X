@@ -1,0 +1,31 @@
+{# Public layout: landing, login, signup and error pages. #}
+{% extends "base.html" %}
+{% from "macros/brand.html" import wordmark %}
+{% block body_class %}fx-public{% endblock %}
+{% block body %}
+<header class="fx-public-nav">
+  <div class="fx-container fx-public-nav-inner">
+    {{ wordmark(40, app_full_name) }}
+    <nav aria-label="Primary" class="fx-public-links">
+      {% block public_links %}
+      <a href="{{ url_for('public.index') }}">Home</a>
+      {% endblock %}
+    </nav>
+    {% if current_user and has_endpoint('dashboard.index') %}
+      <a class="fx-btn fx-btn-primary" href="{{ url_for('dashboard.index') }}">Open dashboard</a>
+    {% elif has_endpoint('auth.login') %}
+      <a class="fx-btn fx-btn-primary" href="{{ url_for('auth.login') }}">Log in</a>
+    {% endif %}
+  </div>
+</header>
+<main id="main" tabindex="-1">
+  <div class="fx-container">{% include "partials/_flash.html" %}</div>
+  {% block content %}{% endblock %}
+</main>
+<footer class="fx-public-footer">
+  <div class="fx-container fx-public-footer-inner">
+    <span><strong>{{ app_name }}</strong>, {{ app_full_name }}</span>
+    <span>Academic project, {{ current_year }}. All case and evidence data shown is synthetic.</span>
+  </div>
+</footer>
+{% endblock %}

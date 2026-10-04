@@ -1,0 +1,43 @@
+{% extends "layouts/auth.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}Log in{% endblock %}
+{% block content %}
+<form method="post" novalidate class="fx-auth-form" data-fx-busy="Logging in…">
+  {{ form.hidden_tag() }}
+  <div class="fx-auth-heading">
+    <h1>Log in to FORGE-X</h1>
+    <p>{{ app_full_name }}</p>
+  </div>
+
+  {% if error == "invalid" %}
+  <div class="fx-alert b-red" role="alert"><i class="bi bi-x-circle" aria-hidden="true"></i>
+    <div><strong>Incorrect username or password.</strong><p>Check your details and try again.</p></div></div>
+  {% elif error == "locked" %}
+  <div class="fx-alert b-amber" role="alert"><i class="bi bi-clock" aria-hidden="true"></i>
+    <div><strong>Too many failed attempts.</strong><p>Logging in is paused for 15 minutes. Contact your administrator if you need access sooner.</p></div></div>
+  {% endif %}
+
+  <div class="fx-field">
+    {{ form.login.label(class_="fx-label") }}
+    {{ form.login(class_="fx-input" ~ (" is-invalid" if error or form.login.errors else ""), autocomplete="username",
+                  autofocus=true, aria_describedby="login-msg") }}
+    <p id="login-msg" class="{{ 'fx-error' if form.login.errors else 'visually-hidden' }}">{{ form.login.errors[0] if form.login.errors }}</p>
+  </div>
+  <div class="fx-field">
+    {{ form.password.label(class_="fx-label") }}
+    <div class="fx-password">
+      {{ form.password(class_="fx-input" ~ (" is-invalid" if error or form.password.errors else ""),
+                       autocomplete="current-password", aria_describedby="password-msg") }}
+      <button type="button" class="fx-password-toggle" data-fx-toggle-password="{{ form.password.id }}" aria-label="Show password">Show</button>
+    </div>
+    <p id="password-msg" class="{{ 'fx-error' if form.password.errors else 'visually-hidden' }}">{{ form.password.errors[0] if form.password.errors }}</p>
+  </div>
+  {{ ui.check_field(form.remember) }}
+  <button type="submit" class="fx-btn fx-btn-primary fx-btn-lg w-100">Log in</button>
+
+  <div class="fx-auth-links">
+    <p>Don't have an account? <a href="{{ url_for('auth.signup') }}">Request access</a></p>
+    <p>Forgot your password or locked out? Contact your lab administrator, who can set a temporary password for you.</p>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}My account{% endblock %}
+{% block content %}
+{% call ui.page_header("My account", "Your profile, roles and recent sign-ins.") %}
+  <a class="fx-btn fx-btn-secondary" href="{{ url_for('auth.change_password') }}">Change password</a>
+{% endcall %}
+<div class="fx-two-col">
+  <section class="fx-card">
+    <div class="fx-card-h"><h2>Profile</h2></div>
+    <div class="fx-card-b">
+      <dl class="fx-dl">
+        <dt>Name</dt><dd>{{ current_user.full_name }}</dd>
+        <dt>Username</dt><dd class="fx-mono">{{ current_user.username }}</dd>
+        <dt>Email</dt><dd>{{ current_user.email }}</dd>
+        <dt>Roles</dt><dd class="d-flex flex-wrap gap-1">{% for r in current_user.roles %}{{ ui.tag(r) }}{% else %}<span class="fx-muted">No role assigned</span>{% endfor %}</dd>
+        <dt>Account created</dt><dd>{{ current_user.created_at|datetime }}</dd>
+      </dl>
+      <p class="fx-help mt-3 mb-0">Only an administrator can change your name, email or roles.</p>
+    </div>
+  </section>
+  <section class="fx-card">
+    <div class="fx-card-h"><h2>Recent sign-ins</h2></div>
+    {% if logins %}
+    <div class="fx-table-wrap">
+      <table class="fx-table">
+        <thead><tr><th>Time</th><th>Result</th><th>IP address</th></tr></thead>
+        <tbody>
+        {% for l in logins %}
+          <tr><td class="fx-mono">{{ l.attempted_at|datetime }}</td>
+              <td>{{ ui.badge("Success" if l.success else "Failure") }}</td>
+              <td class="fx-mono">{{ l.ip_address }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="fx-help px-3 pb-3 mb-0">If you see a sign-in you don't recognise, change your password and tell your administrator.</p>
+    {% else %}
+      {{ ui.empty_state("No sign-ins recorded yet") }}
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

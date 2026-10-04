@@ -1,0 +1,26 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}New examination{% endblock %}
+{% block content %}
+<nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('examinations.list_examinations') }}">Examinations</a><span aria-hidden="true">/</span><span aria-current="page">New</span></nav>
+{{ ui.page_header("New examination", "An ID such as EX-2026-0001 is assigned when you save. The examination starts as Pending.") }}
+<form method="post" novalidate class="fx-card fx-card-b fx-narrow d-flex flex-column gap-3" data-fx-busy="Creating…">
+  {{ form.hidden_tag() }}
+  <div class="d-flex gap-2 align-items-end">
+    <div class="flex-grow-1">{{ ui.field(form.case_id) }}</div>
+    <button type="submit" name="change_case" value="1" class="fx-btn fx-btn-ghost mb-4" formnovalidate>Load this case</button>
+  </div>
+  <div class="fx-form-grid">{{ ui.field(form.examination_type_id) }}{{ ui.field(form.due_date, help="Optional. Shown as overdue once this date passes.") }}</div>
+  {% if form.examiner_id.choices %}
+    {{ ui.field(form.examiner_id, help="Investigators assigned to this case.") }}
+  {% else %}
+    <div class="fx-alert b-amber" role="status"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i><p class="m-0">No active investigator is assigned to this case. Assign one on the case's Investigators tab first.</p></div>
+  {% endif %}
+  <div class="fx-field">{{ form.evidence_ids.label(class_="fx-label") }}
+    {% if form.evidence_ids.choices %}{{ form.evidence_ids(class_="fx-input fx-multi", size=6) }}
+      <p class="fx-help">Hold Ctrl to choose several. More can be linked later.</p>
+    {% else %}<p class="fx-help m-0">This case has no evidence yet. You can link evidence after registering it.</p>{% endif %}</div>
+  <div class="d-flex gap-2"><button type="submit" class="fx-btn fx-btn-primary" {% if not form.examiner_id.choices %}disabled{% endif %}>Create examination</button>
+    <a class="fx-btn fx-btn-ghost" href="{{ url_for('examinations.list_examinations') }}">Cancel</a></div>
+</form>
+{% endblock %}

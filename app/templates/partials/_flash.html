@@ -1,0 +1,15 @@
+{% set icons = {"success": "check-circle", "danger": "x-circle", "warning": "exclamation-triangle", "info": "info-circle"} %}
+{% set tones = {"success": "b-green", "danger": "b-red", "warning": "b-amber", "info": "b-blue"} %}
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  <div class="fx-flash-stack">
+    {% for category, message in messages %}
+      {% set cat = category if category in tones else "info" %}
+      <div class="fx-alert {{ tones[cat] }}" role="{{ 'alert' if cat in ('danger', 'warning') else 'status' }}">
+        <i class="bi bi-{{ icons[cat] }}" aria-hidden="true"></i>
+        <p class="m-0">{{ message }}</p>
+      </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+{% endwith %}

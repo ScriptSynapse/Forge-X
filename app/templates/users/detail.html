@@ -1,0 +1,102 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}{{ user.full_name }}{% endblock %}
+{% block content %}
+<nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('users.index') }}">Users &amp; roles</a><span aria-hidden="true">/</span><span aria-current="page">{{ user.username }}</span></nav>
+{% call ui.page_header(user.full_name, user.email) %}
+  {{ ui.badge(user.account_status) }}
+  {% if not is_self %}
+  <form method="post" action="{{ url_for('users.set_status', user_id=user.user_id) }}"
+        data-fx-confirm="{{ 'Deactivate this account? The user will be signed out immediately.' if user.account_status == 'Active' else 'Activate this account?' }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if user.account_status == "Active" %}
+      <input type="hidden" name="action" value="deactivate">
+      <button type="submit" class="fx-btn fx-btn-danger">Deactivate account</button>
+    {% else %}
+      <input type="hidden" name="action" value="activate">
+      <button type="submit" class="fx-btn fx-btn-secondary">Activate account</button>
+    {% endif %}
+  </form>
+  {% endif %}
+{% endcall %}
+
+{% if is_self %}
+<div class="fx-alert b-blue" role="status"><i class="bi bi-info-circle" aria-hidden="true"></i>
+  <p class="m-0">This is your own account. Another administrator must change your roles or status.</p></div>
+{% endif %}
+
+<div class="fx-two-col">
+  <section class="fx-card">
+    <div class="fx-card-h"><h2>Profile</h2></div>
+    <div class="fx-card-b">
+      <dl class="fx-dl">
+        <dt>Username</dt><dd class="fx-mono">{{ user.username }}</dd>
+        <dt>Created</dt><dd>{{ user.created_at|datetime }}</dd>
+        <dt>Last login</dt><dd>{{ user.last_login_at|datetime if user.last_login_at else "Never" }}</dd>
+        <dt>Password</dt><dd>{{ "Temporary: must be changed at next login" if user.must_change_password else "Set by the user" }}</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section class="fx-card">
+    <div class="fx-card-h"><h2>Roles</h2></div>
+    <ul class="fx-role-list">
+      {% for r in user.roles %}
+      <li>
+        <span class="d-flex flex-column"><span class="fw-medium">{{ r.role_name }}</span>
+          <span class="fx-muted small">Granted {{ r.assigned_at|datetime }}{% if r.assigned_by %} by {{ r.assigned_by }}{% endif %}</span></span>
+        {% if not is_self %}
+        <form method="post" action="{{ url_for('users.revoke_role', user_id=user.user_id, role_id=r.role_id) }}"
+              data-fx-confirm="Remove the {{ r.role_name }} role from {{ user.full_name }}?">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="fx-btn fx-btn-ghost fx-btn-sm">Remove</button>
+        </form>
+        {% endif %}
+      </li>
+      {% else %}
+      <li class="fx-muted">No roles</li>
+      {% endfor %}
+    </ul>
+    {% if not is_self and role_form.role_id.choices %}
+    <form method="post" action="{{ url_for('users.add_role', user_id=user.user_id) }}" class="fx-card-b d-flex gap-2 align-items-end border-top">
+      {{ role_form.hidden_tag() }}
+      <div class="flex-grow-1">{{ role_form.role_id.label(class_="fx-label") }}{{ role_form.role_id(class_="fx-input") }}</div>
+      <button type="submit" class="fx-btn fx-btn-secondary">Add role</button>
+    </form>
+    {% endif %}
+  </section>
+</div>
+
+{% if not is_self %}
+<section class="fx-card">
+  <div class="fx-card-h"><h2>Reset password</h2></div>
+  <form method="post" action="{{ url_for('users.reset_password', user_id=user.user_id) }}" class="fx-card-b d-flex flex-column gap-3"
+        data-fx-confirm="Set a temporary password for {{ user.full_name }}? They will be signed out everywhere.">
+    {{ reset_form.hidden_tag() }}
+    <p class="fx-muted m-0">Use this when the user forgot their password. They'll be signed out and asked to choose a new password at next login.</p>
+    <div class="fx-form-grid">{{ ui.field(reset_form.password) }}{{ ui.field(reset_form.confirm) }}</div>
+    <div><button type="submit" class="fx-btn fx-btn-secondary">Set temporary password</button></div>
+  </form>
+</section>
+{% endif %}
+
+<section class="fx-card">
+  <div class="fx-card-h"><h2>Recent activity</h2></div>
+  {% if activity %}
+  <div class="fx-table-wrap">
+    <table class="fx-table">
+      <thead><tr><th>Time</th><th>Action</th><th>Entity</th><th>Outcome</th><th>Details</th></tr></thead>
+      <tbody>
+      {% for a in activity %}
+        <tr><td class="fx-mono">{{ a.occurred_at|datetime }}</td><td class="fx-mono">{{ a.action }}</td>
+            <td>{{ a.entity_type }} <span class="fx-mono">{{ a.entity_ref or "" }}</span></td>
+            <td>{{ ui.badge(a.outcome) }}</td><td class="fx-muted">{{ a.details or "" }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    {{ ui.empty_state("No activity yet") }}
+  {% endif %}
+</section>
+{% endblock %}

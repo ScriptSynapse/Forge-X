@@ -1,0 +1,40 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}Transfer {{ item.evidence_code }}{% endblock %}
+{% block content %}
+<nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('custody.index') }}">Chain of custody</a><span aria-hidden="true">/</span>
+  <a class="fx-mono" href="{{ url_for('evidence.detail', code=item.evidence_code, tab='custody') }}">{{ item.evidence_code }}</a><span aria-hidden="true">/</span><span aria-current="page">Transfer</span></nav>
+{{ ui.page_header("Record a custody transfer", item.description) }}
+
+<div class="fx-detail-grid">
+  <div class="min-w-0">
+  {% if not has_actions %}
+    <div class="fx-alert b-blue" role="status"><i class="bi bi-info-circle" aria-hidden="true"></i>
+      <div><strong>No custody action is possible right now.</strong><p>The item is {{ item.current_status }}{% if investigator_only %}; investigators can record only Checked Out, Examined and Returned{% endif %}. Archived items are final.</p></div></div>
+  {% else %}
+  <form method="post" novalidate class="fx-card fx-card-b d-flex flex-column gap-3" data-fx-busy="Recording…">
+    {{ form.hidden_tag() }}
+    <div class="fx-form-grid">{{ ui.field(form.action) }}{{ ui.field(form.to_user_id) }}</div>
+    <div class="fx-form-grid">
+      {{ ui.field(form.location_id, help="Required when the item goes into storage (Received, Stored, Returned).") }}
+      {{ ui.field(form.location_note, help="Only when there's no storage location, e.g. \"Courier to the regional lab\".") }}
+    </div>
+    <div class="fx-form-grid">{{ ui.field(form.condition) }}{{ ui.field(form.seal_number, help="Optional, e.g. FX-S-1300.") }}</div>
+    {{ ui.field(form.reason) }}
+    {{ ui.field(form.occurred_at, help="Leave empty for now. Can't be in the future or before the last entry.") }}
+    {{ ui.check_field(form.confirm) }}
+    <div class="d-flex flex-wrap gap-2"><button type="submit" class="fx-btn fx-btn-primary">Record transfer</button>
+      <a class="fx-btn fx-btn-ghost" href="{{ url_for('evidence.detail', code=item.evidence_code, tab='custody') }}">Cancel</a></div>
+    <p class="fx-help m-0">If someone else moves this item while you're on this page, the database refuses your transfer instead of recording two conflicting handovers.</p>
+  </form>
+  {% endif %}
+  </div>
+  <section class="fx-card">
+    <div class="fx-card-h"><h2>Currently</h2>{{ ui.badge(item.current_status) }}</div>
+    <div class="fx-card-b"><dl class="fx-dl fx-dl-tight">
+      <dt>Custodian</dt><dd>{{ item.custodian_name }}</dd>
+      <dt>Location</dt><dd>{{ item.location_name or "Not in a storage location" }}</dd>
+      <dt>Case</dt><dd class="fx-mono">{{ item.case_reference }}</dd></dl></div>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}{{ "New report" if mode == "create" else "Edit " ~ report.report_code }}{% endblock %}
+{% block content %}
+<nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('reports.list_reports') }}">Reports</a><span aria-hidden="true">/</span>
+  {% if mode == "create" %}<span aria-current="page">New</span>{% else %}<a class="fx-mono" href="{{ url_for('reports.detail', code=report.report_code) }}">{{ report.report_code }}</a><span aria-hidden="true">/</span><span aria-current="page">New version</span>{% endif %}</nav>
+{{ ui.page_header("Write a report" if mode == "create" else "Save a new version",
+                  "Saved as a Draft, version 1. A report code such as RP-2026-0001 is assigned automatically." if mode == "create"
+                  else "This creates version " ~ (current.version_no + 1) ~ ". Version " ~ current.version_no ~ " stays exactly as it is.") }}
+<form method="post" novalidate class="fx-card fx-card-b fx-narrow d-flex flex-column gap-3" data-fx-busy="Saving…">
+  {{ form.hidden_tag() }}
+  {% if mode == "create" %}
+    <div class="d-flex gap-2 align-items-end"><div class="flex-grow-1">{{ ui.field(form.case_id) }}</div>
+      <button type="submit" name="change_case" value="1" class="fx-btn fx-btn-ghost mb-4" formnovalidate>Load this case</button></div>
+    {{ ui.field(form.title) }}
+  {% endif %}
+  {{ ui.field(form.methodology, help="How the evidence was handled and examined.") }}
+  {{ ui.field(form.observations, help="Recorded facts only. Shown as \"Recorded observation\" in the PDF.") }}
+  {{ ui.field(form.findings, help="Your interpretation. Shown as \"Examiner interpretation\".") }}
+  {{ ui.field(form.conclusions, help="Your interpretation. Shown as \"Examiner interpretation\".") }}
+  {{ ui.field(form.limitations) }}
+  {% if mode == "create" %}
+    <div class="fx-field">{{ form.examination_ids.label(class_="fx-label") }}
+      {% if form.examination_ids.choices %}{{ form.examination_ids(class_="fx-input fx-multi", size=4) }}<p class="fx-help">Hold Ctrl to choose several. Evidence is referenced through these examinations.</p>
+      {% else %}<p class="fx-help m-0">This case has no examinations yet. You can cite them later while the report is a Draft.</p>{% endif %}</div>
+  {% else %}
+    {{ ui.field(form.change_note, help="For example \"Added EX-2026-0001 results\".") }}
+  {% endif %}
+  <div class="d-flex gap-2"><button class="fx-btn fx-btn-primary" type="submit">{{ "Create report" if mode == "create" else "Save new version" }}</button>
+    <a class="fx-btn fx-btn-ghost" href="{{ url_for('reports.list_reports') if mode == 'create' else url_for('reports.detail', code=report.report_code) }}">Cancel</a></div>
+</form>
+{% endblock %}

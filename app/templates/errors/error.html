@@ -1,0 +1,18 @@
+{% extends "layouts/public.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<section class="fx-container fx-error-page">
+  <p class="fx-error-code">{{ code }}</p>
+  <h1>{{ title }}</h1>
+  <p class="fx-error-message">{{ message }}</p>
+  {% if incident %}
+    <p class="fx-error-incident">Incident reference <span class="fx-mono">{{ incident }}</span>. Share it with your administrator.</p>
+  {% endif %}
+  <div class="fx-error-actions">
+    {% if current_user and has_endpoint('dashboard.index') %}
+      <a class="fx-btn fx-btn-primary" href="{{ url_for('dashboard.index') }}">Go to dashboard</a>
+    {% endif %}
+    <a class="fx-btn fx-btn-secondary" href="{{ url_for('public.index') }}">Go to home page</a>
+  </div>
+</section>
+{% endblock %}

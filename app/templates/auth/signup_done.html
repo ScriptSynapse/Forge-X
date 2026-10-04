@@ -1,0 +1,16 @@
+{% extends "layouts/auth.html" %}
+{% block title %}Request submitted{% endblock %}
+{% block content %}
+<div class="fx-auth-form">
+  <span class="fx-done-icon" aria-hidden="true"><i class="bi bi-check-lg"></i></span>
+  <div class="fx-auth-heading">
+    <h1>Request submitted</h1>
+    <p>Your request reference is <span class="fx-mono text-info">{{ code }}</span>. An administrator will review it
+      and assign your role. You can log in once it's approved, so there's no need to submit another request.</p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="fx-btn fx-btn-secondary" href="{{ url_for('public.index') }}">Back to home</a>
+    <a class="fx-btn fx-btn-ghost" href="{{ url_for('auth.login') }}">Go to log in</a>
+  </div>
+</div>
+{% endblock %}

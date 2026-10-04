@@ -1,0 +1,75 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}{{ report.report_code }}{% endblock %}
+{% block content %}
+{% set is_latest = version.version_no == latest %}
+<nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('reports.list_reports') }}">Reports</a><span aria-hidden="true">/</span><span class="fx-mono" aria-current="page">{{ report.report_code }}</span></nav>
+<div class="fx-page-header">
+  <div class="d-flex flex-column gap-2">
+    <span class="fx-mono text-info small">{{ report.report_code }}, version {{ version.version_no }}{% if not is_latest %} (older version){% endif %}</span>
+    <h1 class="fx-page-title">{{ report.title }}</h1>
+    <span class="fx-muted small">Case <a class="fx-mono" href="{{ url_for('cases.detail', reference=report.case_reference) }}">{{ report.case_reference }}</a>, written by {{ report.author_name }}</span>
+  </div>
+  <div class="fx-page-actions">
+    <a class="fx-btn fx-btn-secondary" href="{{ url_for('reports.pdf', code=report.report_code, v=version.version_no) }}"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i>Export v{{ version.version_no }} as PDF</a>
+    {% if can_edit %}
+      <a class="fx-btn fx-btn-secondary" href="{{ url_for('reports.edit', code=report.report_code) }}">Save a new version</a>
+      <form method="post" action="{{ url_for('reports.submit', code=report.report_code) }}" data-fx-confirm="Submit {{ report.report_code }} for review? It can't be edited while under review.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="fx-btn fx-btn-primary" type="submit">Submit for review</button></form>
+    {% endif %}
+    {% if can_review %}
+      <form method="post" action="{{ url_for('reports.approve', code=report.report_code) }}" data-fx-confirm="Approve version {{ latest }} of {{ report.report_code }}?">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="fx-btn fx-btn-primary" type="submit">Approve report</button></form>
+    {% endif %}
+  </div>
+</div>
+
+<ol class="fx-stepper" aria-label="Report status">
+  {% for s in ["Draft", "Under Review", "Approved"] %}
+    {% set done = loop.index0 < ["Draft", "Under Review", "Approved"].index(report.status) %}
+    <li class="{{ 'is-done' if done }}{{ ' is-current' if s == report.status }}" {% if s == report.status %}aria-current="step"{% endif %}>
+      {% if done %}<i class="bi bi-check-lg" aria-hidden="true"></i>{% else %}<span class="fx-step-dot" aria-hidden="true"></span>{% endif %}{{ s }}</li>
+    {% if not loop.last %}<li class="fx-stepper-line {{ 'is-done' if done }}" aria-hidden="true"></li>{% endif %}
+  {% endfor %}
+  {% if report.status == "Approved" %}<li class="fx-muted small ms-2">by {{ report.approved_by_name }}, {{ report.approved_at|datetime }}</li>{% endif %}
+</ol>
+{% if report.case_status == "Closed" %}<p class="fx-muted small m-0"><i class="bi bi-lock" aria-hidden="true"></i> The case is closed, so this report is read-only. PDF export still works.</p>
+{% elif report.status == "Under Review" and not can_review %}<p class="fx-muted small m-0">Waiting for review by an administrator who is not the author.</p>{% endif %}
+
+<div class="fx-detail-grid">
+  <article class="fx-card min-w-0">
+    <div class="fx-card-h"><h2>Version {{ version.version_no }}</h2><span class="fx-muted small">Saved {{ version.created_at|datetime }} by {{ version.created_by_name }}</span></div>
+    <div class="fx-card-b d-flex flex-column gap-3">
+      {% for key, label in sections %}
+        {% set kind = "fact" if key == "observations" else ("interp" if key in ("findings", "conclusions") else None) %}
+        <div class="fx-record-block{% if kind %} is-{{ kind }}{% endif %}">
+          <h3>{{ label }} {% if kind == "fact" %}<span class="fx-tag">Recorded fact</span>{% elif kind == "interp" %}<span class="fx-tag fx-tag-lead">Examiner interpretation</span>{% endif %}</h3>
+          {% if version[key] %}<p class="fx-prose m-0">{{ version[key] }}</p>{% else %}<p class="fx-muted m-0">Not recorded.</p>{% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </article>
+  <aside class="d-flex flex-column gap-3 min-w-0">
+    <section class="fx-card"><div class="fx-card-h"><h2>Versions</h2></div>
+      <ol class="fx-mini-activity">{% for v in versions %}
+        <li><span><a class="fx-mono" href="{{ url_for('reports.detail', code=report.report_code, v=v.version_no) }}" {% if v.version_no == version.version_no %}aria-current="true"{% endif %}>v{{ v.version_no }}</a>{% if loop.first %} <span class="fx-tag">Current</span>{% endif %} {{ v.change_note }}</span>
+          <span class="fx-mono fx-muted small">{{ v.created_at|datetime }}, {{ v.created_by_name }}</span></li>{% endfor %}</ol></section>
+    <section class="fx-card"><div class="fx-card-h"><h2>Examinations cited</h2></div>
+      <ul class="fx-role-list">{% for x in examinations %}<li><span><a class="fx-mono" href="{{ url_for('examinations.detail', code=x.examination_code) }}">{{ x.examination_code }}</a> {{ x.examination_type }}</span>{{ ui.badge(x.status) }}</li>
+        {% else %}<li class="fx-muted">None cited yet</li>{% endfor %}</ul>
+      {% if can_edit and link_form.examination_ids.choices %}
+      <form method="post" action="{{ url_for('reports.link_examinations', code=report.report_code) }}" class="fx-card-b border-top d-flex gap-2 align-items-end">
+        {{ link_form.hidden_tag() }}<div class="flex-grow-1">{{ link_form.examination_ids.label(class_="fx-label") }}{{ link_form.examination_ids(class_="fx-input fx-multi", size=3) }}</div>
+        <button class="fx-btn fx-btn-secondary" type="submit">Cite</button></form>{% endif %}
+    </section>
+    <section class="fx-card"><div class="fx-card-h"><h2>Evidence referenced</h2></div>
+      <ul class="fx-role-list">{% for e in evidence %}<li><span><a class="fx-mono" href="{{ url_for('evidence.detail', code=e.evidence_code) }}">{{ e.evidence_code }}</a> {{ e.evidence_type }}</span>{{ ui.badge(e.integrity_status) }}</li>
+        {% else %}<li class="fx-muted">Evidence appears here through cited examinations</li>{% endfor %}</ul></section>
+    {% if can_review %}
+    <section class="fx-card"><div class="fx-card-h"><h2>Return to the author</h2></div>
+      <form method="post" action="{{ url_for('reports.return_to_draft', code=report.report_code) }}" class="fx-card-b d-flex flex-column gap-2">
+        {{ return_form.hidden_tag() }}{{ ui.field(return_form.note) }}<div><button class="fx-btn fx-btn-ghost fx-btn-sm" type="submit">Return as Draft</button></div></form></section>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}

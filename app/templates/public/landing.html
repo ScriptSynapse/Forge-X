@@ -1,0 +1,176 @@
+{% extends "layouts/public.html" %}
+{% from "macros/brand.html" import logo %}
+{% block title %}{{ app_full_name }}{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}">{% endblock %}
+
+{% block public_links %}
+<a href="#top" aria-current="page">Home</a>
+<a href="#features">Features</a>
+<a href="#about">About</a>
+<a href="#contact">Contact</a>
+{% endblock %}
+
+{% block content %}
+{% set start_url = url_for('dashboard.index') if current_user else url_for('auth.login') %}
+<section id="top" class="fx-hero">
+  <div class="fx-container fx-hero-grid">
+    <div>
+      <h1 class="fx-hero-title">Secure. Track.<br>Investigate.<br><span class="fx-hero-accent">Maintain Integrity.</span></h1>
+      <p class="fx-hero-text">A comprehensive digital forensics laboratory management system to handle cases, evidence,
+        chain of custody, examinations, and reports with integrity, accountability, and traceability.</p>
+      <div class="fx-hero-actions">
+        <a class="fx-btn fx-btn-primary fx-btn-lg" href="{{ start_url }}">{{ "Open dashboard" if current_user else "Get started" }}</a>
+        <a class="fx-btn fx-btn-secondary fx-btn-lg" href="#features">Learn more</a>
+      </div>
+      <p class="fx-hero-note">An academic DBMS project built with Python Flask and MySQL 8.</p>
+    </div>
+
+    <div class="fx-hero-visual" aria-label="Illustration: an evidence integrity check and its chain of custody" role="img">
+      <svg class="fx-hero-print" aria-hidden="true" viewBox="0 0 400 400" fill="none" stroke="#1677FF" stroke-opacity="0.24" stroke-width="2" stroke-linecap="round">
+        <circle cx="200" cy="200" r="22" stroke-dasharray="100 38"/><circle cx="200" cy="200" r="40" stroke-dasharray="170 22 50 10"/>
+        <circle cx="200" cy="200" r="58" stroke-dasharray="230 30 90 14"/><circle cx="200" cy="200" r="76" stroke-dasharray="300 26 110 42"/>
+        <circle cx="200" cy="200" r="94" stroke-dasharray="410 40 120 20"/><circle cx="200" cy="200" r="112" stroke-dasharray="380 30 200 50 40 4"/>
+        <circle cx="200" cy="200" r="130" stroke-dasharray="520 60 180 56"/><circle cx="200" cy="200" r="148" stroke-dasharray="600 50 200 80"/>
+        <circle cx="200" cy="200" r="166" stroke-dasharray="700 90 200 54"/><circle cx="200" cy="200" r="184" stroke-dasharray="760 70 260 70"/>
+      </svg>
+      <div class="fx-card fx-hero-card" aria-hidden="true">
+        <div class="fx-card-h fx-hero-card-h"><h2>Integrity check <span class="fx-muted fw-normal">(example)</span></h2><span class="fx-badge b-green">Verified</span></div>
+        <div class="fx-card-b d-flex flex-column gap-3">
+          <dl class="fx-dl fx-hero-dl">
+            <dt>Evidence</dt><dd class="fx-mono">FX-EV-2026-00051</dd>
+            <dt>Item</dt><dd>Disk image, FS-FIN-02 system volume</dd>
+            <dt>Case</dt><dd class="fx-mono">FX-2026-0022</dd>
+          </dl>
+          <div class="fx-hash-block"><span>Recorded SHA-256, intake 19 Sep 2026</span>
+            <code>3b7f1c9e04a2d58e6f91c2a7b34d0e85f1c6a9d2e7b40f38c5a1d9e62b7f0c4a</code></div>
+          <div class="fx-hash-block is-match"><span>Computed 03 Oct 2026, 10:42</span>
+            <code>3b7f1c9e04a2d58e6f91c2a7b34d0e85f1c6a9d2e7b40f38c5a1d9e62b7f0c4a</code></div>
+          <p class="fx-hash-result"><i class="bi bi-check-lg"></i>Hashes match at this comparison.</p>
+        </div>
+      </div>
+      <div class="fx-card fx-hero-chain" aria-hidden="true">
+        <p class="fw-semibold mb-2 small">Chain of custody</p>
+        <ol>
+          <li><span>Collected</span><span class="fx-muted">Dev Kulkarni</span></li>
+          <li><span>Received</span><span class="fx-muted">Priya Nair</span></li>
+          <li><span>Stored</span><span class="fx-muted">Vault B</span></li>
+          <li class="is-current"><span>Checked out</span><span class="fx-muted">Rohan Iyer</span></li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="features" class="fx-container fx-section">
+  <h2 class="fx-section-title">Built around the integrity of every evidence item</h2>
+  <p class="fx-section-lead">FORGE-X keeps cases, evidence, custody and reports in one MySQL database, so every record can be traced to the person who created it and the time it happened.</p>
+  <div class="fx-feature-grid">
+    <article class="fx-card fx-feature"><i class="bi bi-link-45deg" aria-hidden="true"></i><h3>Integrity &amp; traceability</h3><p>Maintain a detailed record of evidence handling, transfers, and verification events.</p></article>
+    <article class="fx-card fx-feature"><i class="bi bi-shield-lock" aria-hidden="true"></i><h3>Role-based access</h3><p>Restrict sensitive operations to authorized users.</p></article>
+    <article class="fx-card fx-feature"><i class="bi bi-database" aria-hidden="true"></i><h3>Comprehensive records</h3><p>Manage cases, evidence, examinations, and reports from one platform.</p></article>
+    <article class="fx-card fx-feature"><i class="bi bi-clipboard2-pulse" aria-hidden="true"></i><h3>Built for forensic labs</h3><p>Organize investigation workflows and improve record traceability.</p></article>
+  </div>
+</section>
+
+<section class="fx-container fx-section fx-why">
+  <div>
+    <h2 class="fx-section-title">Why FORGE-X?</h2>
+    <p class="fx-section-lead">Many small labs still track evidence in spreadsheets and paper forms. These are the gaps that causes, and how FORGE-X closes each one.</p>
+  </div>
+  <div class="fx-card fx-why-table" role="table" aria-label="Common gaps and how FORGE-X handles them">
+    <div class="fx-why-row fx-why-head" role="row"><span role="columnheader">The usual gap</span><span role="columnheader">In FORGE-X</span></div>
+    <div class="fx-why-row" role="row"><span role="cell">Custody forms go missing or get filled in after the fact.</span><span role="cell">Each handover is saved in the same transaction that updates the evidence item.</span></div>
+    <div class="fx-why-row" role="row"><span role="cell">Hash values sit in notes and filenames.</span><span role="cell">Original hashes are stored once, and every later check is kept, failures included.</span></div>
+    <div class="fx-why-row" role="row"><span role="cell">Anyone with the spreadsheet can change anything.</span><span role="cell">What you can do depends on your role, checked on the server for every request.</span></div>
+    <div class="fx-why-row" role="row"><span role="cell">Edits leave no trace.</span><span role="cell">Custody entries and audit logs can't be edited. Mistakes are fixed with a linked correction.</span></div>
+  </div>
+</section>
+
+<section class="fx-band">
+  <div class="fx-container fx-section">
+    <h2 class="fx-section-title">Key capabilities</h2>
+    <p class="fx-section-lead">Each module reads and writes its own part of the database. The tables behind each one are listed so you can follow the data.</p>
+    <div class="fx-capabilities">
+      {% for title, text, tables in [
+        ("Case management", "Register cases with unique references, assign investigators and track status through to closure.", "cases, case_investigators"),
+        ("Evidence registry", "Record type, condition, collection details, the current custodian and the storage location.", "evidence, storage_locations"),
+        ("SHA-256 verification", "Compute hashes for permitted sample files and compare them with the recorded original.", "evidence_hashes, hash_verifications"),
+        ("Chain of custody", "A chronological, append-only history of who held each item, where and why.", "chain_of_custody"),
+        ("Examinations and reports", "Record methods, observations and findings, then export versioned reports as PDF.", "examinations, forensic_reports, report_versions"),
+        ("Access control and audit", "Four roles, admin-approved accounts and a filterable record of every important action.", "users, user_roles, audit_logs"),
+      ] %}
+      <div class="fx-capability"><h3>{{ title }}</h3><p>{{ text }}</p><p class="fx-capability-tables">{{ tables }}</p></div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section id="workflow" class="fx-container fx-section">
+  <h2 class="fx-section-title">Investigation workflow</h2>
+  <p class="fx-section-lead">FORGE-X follows the order a lab actually works in, from opening a case to signing off the report.</p>
+  <ol class="fx-workflow">
+    {% for title, text in [
+      ("Case registration", "A case is opened with a unique reference and a lead investigator."),
+      ("Evidence collection", "Each item is registered with its type, condition and collection details."),
+      ("Hash verification", "The original SHA-256 is recorded and rechecked before and after handling."),
+      ("Chain of custody", "Every handover, check-out and return is logged in order."),
+      ("Examination", "Examiners record tools, methods, observations and findings."),
+      ("Report generation", "Findings are written up, reviewed, versioned and exported as PDF."),
+    ] %}
+    <li{% if loop.last %} class="is-last"{% endif %}><span class="fx-step">{{ loop.index }}</span><h3>{{ title }}</h3><p>{{ text }}</p></li>
+    {% endfor %}
+  </ol>
+</section>
+
+<section id="about" class="fx-section-border">
+  <div class="fx-container fx-section fx-two-col-landing">
+    <div>
+      <h2 class="fx-section-title">About the project</h2>
+      <p class="fx-section-lead">FORGE-X is a B.Tech Computer Science project for a database management systems course. It shows how a relational database can support a forensic laboratory's record keeping: cases, evidence, custody, examinations and reports.</p>
+      <p class="fx-section-lead">It is a learning project, not a certified forensic product. All records in the demo are synthetic, and the system records examination activity rather than running forensic tools on devices.</p>
+      <div class="d-flex flex-wrap gap-2 mt-4">
+        {% for t in ["Python 3 and Flask", "MySQL 8.0 (InnoDB)", "Jinja2 and Bootstrap 5", "Chart.js", "ReportLab", "pytest"] %}<span class="fx-tag">{{ t }}</span>{% endfor %}
+      </div>
+    </div>
+    <div class="fx-card">
+      <div class="fx-card-h"><h2>Database at a glance</h2><span class="fx-mono small text-info">forge_x_db</span></div>
+      <div class="fx-card-b">
+        <dl class="fx-dl">
+          <dt>Engine</dt><dd>MySQL 8.0 with InnoDB transactions</dd>
+          <dt>Schema</dt><dd>22 tables, normalized to 3NF and BCNF where applicable</dd>
+          <dt>In the database</dt><dd>8 views, 12 stored procedures, 22 triggers, targeted indexes</dd>
+          <dt>Integrity</dt><dd>Foreign keys, unique and check constraints, append-only history tables</dd>
+          <dt>Access</dt><dd>Dedicated least-privilege MySQL account for the app</dd>
+          <dt>Data</dt><dd>Synthetic demonstration records only</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="contact" class="fx-band">
+  <div class="fx-container fx-section fx-two-col-landing">
+    <div>
+      <h2 class="fx-section-title">Project information</h2>
+      <p class="fx-section-lead">Lab members request an account, and an administrator approves it and assigns a role.</p>
+      <div class="fx-hero-actions">
+        {% if not current_user %}<a class="fx-btn fx-btn-primary" href="{{ url_for('auth.signup') }}">Request access</a>{% endif %}
+        <a class="fx-btn fx-btn-secondary" href="{{ start_url }}">{{ "Open dashboard" if current_user else "Log in" }}</a>
+      </div>
+    </div>
+    <div class="fx-card">
+      <div class="fx-card-b">
+        {# Replace the bracketed placeholders with your team's details. #}
+        <dl class="fx-dl">
+          <dt>Project team</dt><dd>[Student names and roll numbers]</dd>
+          <dt>Institution</dt><dd>[College name]</dd>
+          <dt>Department</dt><dd>Computer Science and Engineering</dd>
+          <dt>Project guide</dt><dd>[Faculty guide name]</dd>
+          <dt>Contact</dt><dd>[Project email address]</dd>
+          <dt>Source code</dt><dd>[GitHub repository URL]</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

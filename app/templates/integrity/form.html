@@ -1,0 +1,61 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}{{ title }}: {{ item.evidence_code }}{% endblock %}
+{% block content %}
+<nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('evidence.list_evidence') }}">Evidence</a><span aria-hidden="true">/</span>
+  <a class="fx-mono" href="{{ url_for('evidence.detail', code=item.evidence_code, tab='hashes') }}">{{ item.evidence_code }}</a><span aria-hidden="true">/</span><span aria-current="page">{{ title }}</span></nav>
+{{ ui.page_header(title, item.description) }}
+
+{% if result %}
+<section class="fx-card fx-verify-result {{ 'is-match' if result.outcome == 'Verified' else 'is-mismatch' }}" aria-live="polite">
+  <div class="fx-card-h"><h2>{{ "Hashes match" if result.outcome == "Verified" else "Hashes do NOT match" }}</h2>{{ ui.badge(result.outcome) }}</div>
+  <div class="fx-card-b d-flex flex-column gap-3">
+    <div><span class="small fx-muted">Current reference SHA-256</span><code class="fx-hash">{{ result.reference }}</code></div>
+    <div><span class="small fx-muted">Computed now{% if result.file_name %} from {{ result.file_name }} ({{ result.size|filesize }}){% endif %}</span><code class="fx-hash">{{ result.computed }}</code></div>
+    {% if result.outcome == "Verified" %}
+      <p class="m-0 text-success-emphasis"><i class="bi bi-check-lg" aria-hidden="true"></i> The content was identical when compared. On its own this doesn't prove authenticity, ownership or a complete custody history.</p>
+    {% else %}
+      <p class="m-0 text-danger-emphasis"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> The result was saved as <strong>Failed</strong>. Check you used the right sample file. If the item may have changed, report it to the lead investigator.</p>
+    {% endif %}
+    <p class="fx-help m-0">The result was decided by the database (trigger <span class="fx-mono">trg_hv_set_result</span>) and recorded in the verification history.</p>
+    <div class="d-flex gap-2"><a class="fx-btn fx-btn-primary" href="{{ url_for('evidence.detail', code=item.evidence_code, tab='hashes') }}">View hash history</a>
+      <a class="fx-btn fx-btn-ghost" href="{{ url_for('integrity.verify', code=item.evidence_code) }}">Verify again</a></div>
+  </div>
+</section>
+{% else %}
+
+{% if mode != "record" %}
+<section class="fx-card"><div class="fx-card-b">
+  <span class="small fx-muted">Current reference SHA-256</span><code class="fx-hash">{{ item.current_hash_value }}</code>
+</div></section>
+{% endif %}
+
+<form method="post" enctype="multipart/form-data" novalidate class="fx-card fx-card-b fx-narrow d-flex flex-column gap-3" data-fx-busy="Working…">
+  {{ form.hidden_tag() }}
+  {% if mode == "verify" %}<p class="m-0">Choose a sample file to hash now, or enter a hash computed with another tool. The result is recorded either way, including a failure.</p>
+  {% elif mode == "record" %}<p class="m-0">This becomes the item's reference hash. Later verifications are compared against it. It can't be edited, only corrected with a reason.</p>
+  {% else %}<p class="m-0">The current hash stays on record, marked as superseded. Future verifications compare against the new one.</p>{% endif %}
+
+  <fieldset class="fx-fieldset"><legend class="fx-label">{{ form.method.label.text }}</legend>
+    <div class="fx-radio-group">
+      {% for option in form.method %}<label class="fx-check">{{ option() }} {{ option.label.text }}</label>{% endfor %}
+    </div>
+  </fieldset>
+
+  <div class="fx-field">
+    {{ form.sample_file.label(class_="fx-label") }}
+    {{ form.sample_file(class_="fx-input fx-file" ~ (" is-invalid" if form.sample_file.errors else ""), aria_describedby="sample-msg") }}
+    {% if form.sample_file.errors %}<p id="sample-msg" class="fx-error">{{ form.sample_file.errors[0] }}</p>
+    {% else %}<p id="sample-msg" class="fx-help">Up to {{ max_mb }} MB. FORGE-X computes the SHA-256 as it reads the file and never stores, opens or runs it.</p>{% endif %}
+  </div>
+  {{ ui.field(form.hash_value, help="Only if you chose \"Enter a hash\": 64 hexadecimal characters.", extra_class="fx-mono") }}
+  {{ ui.field(form.notes, help="Required for an entered hash, e.g. \"FTK Imager 4.7 acquisition report\". Optional otherwise.") }}
+  {% if mode == "correct" %}{{ ui.field(form.reason, help="What was wrong with the recorded hash. This is shown on the hash history.") }}{% endif %}
+
+  <div class="d-flex flex-wrap gap-2">
+    <button type="submit" class="fx-btn fx-btn-primary">{{ {"record": "Record hash", "verify": "Compute and compare", "correct": "Record correction"}[mode] }}</button>
+    <a class="fx-btn fx-btn-ghost" href="{{ url_for('evidence.detail', code=item.evidence_code, tab='hashes') }}">Cancel</a>
+  </div>
+</form>
+{% endif %}
+{% endblock %}

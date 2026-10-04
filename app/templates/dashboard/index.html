@@ -1,0 +1,135 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}Dashboard{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">{% endblock %}
+
+{# A stat card links to its list page once that page exists (later phases). #}
+{% macro stat_card(label, value, note, endpoint=None, tone="") -%}
+{% set tag = "a" if endpoint and has_endpoint(endpoint) else "div" %}
+<{{ tag }} class="fx-card fx-stat"{% if tag == "a" %} href="{{ url_for(endpoint) }}"{% endif %}>
+  <span class="fx-stat-label">{{ label }}</span>
+  <span class="fx-stat-value {{ tone }}">{{ value }}</span>
+  <span class="fx-stat-note">{{ note }}</span>
+</{{ tag }}>
+{%- endmacro %}
+
+{% block content %}
+{% call ui.page_header("Dashboard", scope.label ~ ", as of " ~ (as_of|datetime) ~ ".") %}
+  {% if can_register_evidence and has_endpoint('evidence.create') %}<a class="fx-btn fx-btn-secondary" href="{{ url_for('evidence.create') }}">Register evidence</a>{% endif %}
+  {% if can_create_case and has_endpoint('cases.create') %}<a class="fx-btn fx-btn-primary" href="{{ url_for('cases.create') }}">New case</a>{% endif %}
+{% endcall %}
+
+{% set c = stats.cases %}{% set e = stats.evidence %}{% set i = stats.integrity %}
+<section aria-label="Summary" class="fx-stat-grid">
+  {{ stat_card("Total cases", c.total, "All registered cases" if scope.lab_wide else "Cases you are assigned to", "cases.list_cases") }}
+  {{ stat_card("Open cases", c.open_cases, c.s_open ~ " open, " ~ c.s_progress ~ " in progress, " ~ c.s_hold ~ " on hold", "cases.list_cases") }}
+  {{ stat_card("Closed cases", c.closed, c.closed_recent ~ " closed in the last 30 days", "cases.list_cases") }}
+  {{ stat_card("Total evidence", e.total, "Across " ~ e.cases_with_evidence ~ " case" ~ ("s" if e.cases_with_evidence != 1 else ""), "evidence.list_evidence") }}
+  {{ stat_card("Evidence in storage", e.in_storage, "In vaults, rooms and lockers", "evidence.list_evidence") }}
+  {{ stat_card("Under examination", e.under_exam, "With examiners now", "evidence.list_evidence", "is-cyan") }}
+  {{ stat_card("Pending transfers", e.pending_transfers, e.checked_out ~ " checked out, " ~ e.in_transit ~ " in transit", "custody.index", "is-amber" if e.pending_transfers else "") }}
+  {% set tag = "a" if has_endpoint('evidence.list_evidence') else "div" %}
+  <{{ tag }} class="fx-card fx-stat"{% if tag == "a" %} href="{{ url_for('evidence.list_evidence') }}"{% endif %}>
+    <span class="fx-stat-label">Integrity verification</span>
+    <span class="fx-stat-inline"><span class="fx-stat-value is-green">{{ i.Verified }}</span><span class="fx-stat-note">of {{ e.total }} verified</span></span>
+    {% if e.total %}
+    <span class="fx-integrity-bar" role="img"
+          aria-label="{{ i.Verified }} verified, {{ i.Failed }} failed, {{ i.Pending }} pending, {{ i['Not Verified'] }} not verified">
+      <span class="seg-verified" data-fx-width="{{ stats.integrity_pct.Verified }}"></span><span class="seg-failed" data-fx-width="{{ stats.integrity_pct.Failed }}"></span><span class="seg-pending" data-fx-width="{{ stats.integrity_pct.Pending }}"></span>
+    </span>
+    {% endif %}
+    <span class="fx-stat-note"><span class="{{ 'text-danger-emphasis' if i.Failed else '' }}">{{ i.Failed }} failed</span>, {{ i.Pending }} pending, {{ i['Not Verified'] }} not verified</span>
+  </{{ tag }}>
+</section>
+
+{% set show_requests = 'Administrator' in current_user.roles %}
+{% if attention.overdue_exams or attention.failed_integrity or attention.reports_in_review or (show_requests and attention.pending_requests) %}
+<section class="fx-card fx-attention" aria-labelledby="attention-h">
+  <div class="fx-card-h"><h2 id="attention-h">Needs attention</h2></div>
+  <ul class="fx-attention-list">
+    {% if attention.overdue_exams %}<li><span class="fx-badge b-red">{{ attention.overdue_exams }}</span> examination{{ "s" if attention.overdue_exams != 1 }} past due date</li>{% endif %}
+    {% if attention.failed_integrity %}<li><span class="fx-badge b-red">{{ attention.failed_integrity }}</span> evidence item{{ "s" if attention.failed_integrity != 1 }} whose latest hash check failed</li>{% endif %}
+    {% if attention.reports_in_review %}<li><span class="fx-badge b-amber">{{ attention.reports_in_review }}</span> report{{ "s" if attention.reports_in_review != 1 }} awaiting review</li>{% endif %}
+    {% if show_requests and attention.pending_requests %}<li><span class="fx-badge b-amber">{{ attention.pending_requests }}</span> account request{{ "s" if attention.pending_requests != 1 }} to review
+      {% if has_endpoint('users.index') %}<a href="{{ url_for('users.index') }}">Review</a>{% endif %}</li>{% endif %}
+  </ul>
+</section>
+{% endif %}
+
+<section aria-label="Charts" class="fx-chart-grid">
+  {% for chart in [
+      {"id": "cases-by-status", "title": "Cases by status", "type": "doughnut"},
+      {"id": "cases-by-priority", "title": "Cases by priority", "type": "bar-priority"},
+      {"id": "evidence-by-type", "title": "Evidence by type", "type": "bar-horizontal"},
+      {"id": "case-trend", "title": "Case registrations, last 12 months", "type": "line"},
+  ] %}
+  <article class="fx-card fx-chart-card">
+    <div class="fx-card-h"><h2 id="chart-{{ chart.id }}-h">{{ chart.title }}</h2><span class="fx-chart-total fx-muted small" data-fx-total></span></div>
+    <div class="fx-card-b fx-chart" data-fx-chart="{{ chart.type }}"
+         data-endpoint="{{ url_for('dashboard.chart_data', chart=chart.id) }}" aria-labelledby="chart-{{ chart.id }}-h">
+      <div class="fx-chart-state" data-state="loading" aria-busy="true">
+        <span class="fx-skeleton" style="height:14px;width:60%"></span><span class="fx-skeleton" style="height:14px;width:90%"></span>
+        <span class="fx-skeleton" style="height:14px;width:75%"></span><span class="fx-muted small">Loading chart data…</span>
+      </div>
+      <div class="fx-chart-state" data-state="empty" hidden>
+        <p class="fw-semibold mb-1">Nothing to show yet</p>
+        <p class="fx-muted small mb-0">This chart fills in as records are added.</p>
+      </div>
+      <div class="fx-chart-state" data-state="error" hidden>
+        <p class="fw-semibold mb-1 text-danger-emphasis">Chart data couldn't be loaded</p>
+        <p class="fx-muted small mb-2" data-fx-error-text>The server didn't respond. Other figures on this page are unaffected.</p>
+        <button type="button" class="fx-btn fx-btn-secondary fx-btn-sm" data-fx-retry>Try again</button>
+      </div>
+      <div class="fx-chart-canvas" data-state="ready" hidden><canvas role="img"></canvas></div>
+      <table class="visually-hidden" data-fx-table><caption>{{ chart.title }}</caption><thead><tr><th scope="col">Category</th><th scope="col">Count</th></tr></thead><tbody></tbody></table>
+    </div>
+  </article>
+  {% endfor %}
+</section>
+
+<section class="fx-card" aria-labelledby="recent-h">
+  <div class="fx-card-h">
+    <h2 id="recent-h">{{ "Recent activity" if scope.sees_all_activity else "Your recent activity" }}</h2>
+    {% if has_endpoint('audit.index') %}<a class="small" href="{{ url_for('audit.index') }}">View audit logs</a>{% endif %}
+  </div>
+  {% if activity %}
+  <div class="fx-table-wrap">
+    <table class="fx-table">
+      <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Entity</th><th>Result</th></tr></thead>
+      <tbody>
+      {% for a in activity %}
+        <tr>
+          <td class="fx-mono text-nowrap">{{ a.occurred_at|datetime }}</td>
+          <td>{% if a.user_name %}{{ a.user_name }}{% else %}<span class="fx-muted">Not logged in</span>{% endif %}</td>
+          <td>{{ action_labels.get(a.action, a.action) }}</td>
+          <td>{{ a.entity_type }} {% if a.entity_ref %}<span class="fx-mono">{{ a.entity_ref }}</span>{% endif %}</td>
+          <td>{{ ui.badge(a.outcome) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    {{ ui.empty_state("No activity yet", "Logins and changes will appear here.") }}
+  {% endif %}
+</section>
+
+<details class="fx-card fx-card-b fx-metric-notes">
+  <summary>How these figures are calculated</summary>
+  <dl class="fx-dl mt-3">
+    <dt>Scope</dt><dd>{{ scope.label }}. Administrators, auditors and evidence custodians see the whole lab; investigators see the cases they are assigned to.</dd>
+    <dt>Open cases</dt><dd>Status is Open, In Progress or On Hold (anything except Closed).</dd>
+    <dt>Closed recently</dt><dd>Closed within the last 30 days.</dd>
+    <dt>Evidence in storage</dt><dd>Current status is In Storage.</dd>
+    <dt>Under examination</dt><dd>Current status is Under Examination.</dd>
+    <dt>Pending transfers</dt><dd>Checked Out or In Transit: out of storage and still to be returned or received.</dd>
+    <dt>Integrity</dt><dd>Latest check of each item's current reference hash. Pending means a hash is recorded but has never been checked; Not Verified means no hash is recorded. A matching hash shows the content was identical when compared; it does not prove authenticity on its own.</dd>
+    <dt>Needs attention</dt><dd>Examinations past their due date that are still Pending or In Progress; items whose latest check Failed; reports Under Review{% if show_requests %}; pending account requests{% endif %}.</dd>
+  </dl>
+</details>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/chartjs/chart.umd.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}" defer></script>
+{% endblock %}

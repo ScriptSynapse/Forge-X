@@ -1,0 +1,15 @@
+{# Authenticated application shell: sidebar + top bar + content. #}
+{% extends "base.html" %}
+{% block body_class %}fx-app{% endblock %}
+{% block body %}
+<div class="fx-shell">
+  {% include "partials/_sidebar.html" %}
+  <div class="fx-main">
+    {% include "partials/_topbar.html" %}
+    <main id="main" class="fx-content" tabindex="-1">
+      {% include "partials/_flash.html" %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,77 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}Users & roles{% endblock %}
+{% block content %}
+{% call ui.page_header("Users & roles", "Only administrators can see this page. You can't change your own roles or status.") %}
+  <a class="fx-btn fx-btn-primary" href="{{ url_for('users.create') }}"><i class="bi bi-plus-lg" aria-hidden="true"></i>Create user</a>
+{% endcall %}
+
+<section class="fx-card" aria-labelledby="req-h">
+  <div class="fx-card-h"><h2 id="req-h">Access requests <span class="fx-count">{{ requests|length }} pending</span></h2></div>
+  {% if requests %}
+  <ul class="fx-request-list">
+    {% for r in requests %}
+    <li class="fx-request">
+      <div class="fx-request-info">
+        <span class="fx-request-name">{{ r.full_name }} <span class="fx-mono fx-muted">AR-{{ '%04d'|format(r.request_id) }}</span></span>
+        <span>{{ r.email }}, username <span class="fx-mono">{{ r.username }}</span></span>
+        <span class="fx-muted">{% if r.reason %}"{{ r.reason }}"{% else %}No reason given.{% endif %} Submitted {{ r.created_at|datetime }}</span>
+      </div>
+      <div class="fx-request-actions">
+        <form method="post" action="{{ url_for('users.approve_request', request_id=r.request_id) }}" class="d-flex gap-2 align-items-center">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label class="visually-hidden" for="role-{{ r.request_id }}">Role for {{ r.full_name }}</label>
+          <select id="role-{{ r.request_id }}" name="role_id" class="fx-input fx-input-sm" required>
+            <option value="">Choose a role</option>
+            {% for role in roles %}<option value="{{ role.role_id }}">{{ role.role_name }}</option>{% endfor %}
+          </select>
+          <button type="submit" class="fx-btn fx-btn-primary fx-btn-sm">Approve</button>
+        </form>
+        <form method="post" action="{{ url_for('users.reject_request', request_id=r.request_id) }}"
+              data-fx-confirm="Reject the request from {{ r.full_name }}?">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="fx-btn fx-btn-danger fx-btn-sm">Reject</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+    {{ ui.empty_state("No pending requests", "New signups appear here for review.") }}
+  {% endif %}
+</section>
+
+<section class="fx-card" aria-labelledby="users-h">
+  <div class="fx-card-h"><h2 id="users-h">Users <span class="fx-count">{{ users|length }}</span></h2></div>
+  <div class="fx-table-wrap">
+    <table class="fx-table">
+      <thead><tr><th>Name</th><th>Username</th><th>Roles</th><th>Status</th><th>Last login</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
+      <tbody>
+      {% for u in users %}
+        {% set is_self = u.user_id == current_user.user_id %}
+        <tr>
+          <td><span class="d-flex flex-column"><span class="fw-medium">{{ u.full_name }}{% if is_self %} <span class="fx-muted fw-normal">(you)</span>{% endif %}</span>
+              <span class="fx-muted small">{{ u.email }}</span></span></td>
+          <td class="fx-mono">{{ u.username }}</td>
+          <td><span class="d-flex flex-wrap gap-1">{% for r in u.roles %}{{ ui.tag(r) }}{% else %}<span class="fx-muted">None</span>{% endfor %}</span></td>
+          <td>{{ ui.badge(u.account_status) }}</td>
+          <td class="fx-mono">{{ u.last_login_at|datetime if u.last_login_at else "Never" }}</td>
+          <td>{% if is_self %}<a class="fx-btn fx-btn-ghost fx-btn-sm" href="{{ url_for('auth.account') }}">My account</a>
+              {% else %}<a class="fx-btn fx-btn-ghost fx-btn-sm" href="{{ url_for('users.detail', user_id=u.user_id) }}">Manage</a>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section aria-label="Roles" class="fx-role-grid">
+  {% for role in roles %}
+  <div class="fx-card fx-card-b">
+    <div class="d-flex justify-content-between"><span class="fw-semibold">{{ role.role_name }}</span>
+      <span class="fx-muted">{{ role.active_users }} active user{{ "s" if role.active_users != 1 }}</span></div>
+    <p class="fx-muted small mb-0 mt-1">{{ role.description }}</p>
+  </div>
+  {% endfor %}
+</section>
+{% endblock %}

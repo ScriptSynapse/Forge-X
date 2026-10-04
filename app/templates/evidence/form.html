@@ -1,0 +1,55 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}{{ "Register evidence" if mode == "create" else "Edit " ~ item.evidence_code }}{% endblock %}
+{% block content %}
+{% set creating = mode == "create" %}
+<nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('evidence.list_evidence') }}">Evidence</a><span aria-hidden="true">/</span>
+  {% if creating %}<span aria-current="page">Register</span>
+  {% else %}<a class="fx-mono" href="{{ url_for('evidence.detail', code=item.evidence_code) }}">{{ item.evidence_code }}</a><span aria-hidden="true">/</span><span aria-current="page">Edit</span>{% endif %}</nav>
+
+{% if creating %}
+{{ ui.page_header("Register evidence", "An ID such as FX-EV-2026-00060 is assigned when you save. The chain of custody starts with a Collected entry.") }}
+{% if not has_cases %}
+  <div class="fx-alert b-amber" role="status"><i class="bi bi-info-circle" aria-hidden="true"></i>
+    <div><strong>There are no open cases you can add evidence to.</strong><p>Investigators can register evidence only for open cases they're assigned to.</p></div></div>
+{% else %}
+<form method="post" novalidate class="fx-card fx-card-b fx-narrow d-flex flex-column gap-4" data-fx-busy="Registering…">
+  {{ form.hidden_tag() }}
+  <fieldset class="fx-fieldset"><legend>The item</legend>
+    <div class="fx-form-grid">{{ ui.field(form.case_id) }}{{ ui.field(form.evidence_type_id) }}</div>
+    {{ ui.field(form.description, help="What it is, e.g. \"Forensic image of FS-FIN-02 system volume\".") }}
+    <div class="fx-form-grid">
+      {{ ui.field(form.source_details, help="Optional: make, model, serial or format.") }}
+      {{ ui.field(form.size_bytes, help="Optional. For example 512110190592 for a 512 GB drive.") }}
+    </div>
+  </fieldset>
+  <fieldset class="fx-fieldset"><legend>Collection</legend>
+    <div class="fx-form-grid">{{ ui.field(form.collected_at, help="Lab local time (IST).") }}{{ ui.field(form.collected_by, help="Becomes the first custodian.") }}</div>
+    {{ ui.field(form.collection_site, help="Where it was collected, e.g. Finance server room, 3rd floor.") }}
+    <div class="fx-form-grid">{{ ui.field(form.collection_condition) }}{{ ui.field(form.seal_number, help="Optional, e.g. FX-S-1300.") }}</div>
+  </fieldset>
+  <fieldset class="fx-fieldset"><legend>Original hash <span class="fx-muted fw-normal">(optional)</span></legend>
+    {{ ui.field(form.original_hash, help="64 hexadecimal characters. You can also record it later from the item's Hash information tab.", extra_class="fx-mono") }}
+    <div class="fx-form-grid">{{ ui.field(form.hash_source) }}{{ ui.field(form.hash_notes, help="Required when copied from another record.") }}</div>
+  </fieldset>
+  <div class="d-flex flex-wrap gap-2">
+    <button type="submit" class="fx-btn fx-btn-primary">Register evidence</button>
+    <a class="fx-btn fx-btn-ghost" href="{{ url_for('evidence.list_evidence') }}">Cancel</a>
+  </div>
+</form>
+{% endif %}
+
+{% else %}
+{{ ui.page_header("Edit evidence details", "Collection time, collector, condition at collection, custody and hashes are part of the forensic record and can't be edited here.") }}
+<form method="post" novalidate class="fx-card fx-card-b fx-narrow d-flex flex-column gap-3" data-fx-busy="Saving…">
+  {{ form.hidden_tag() }}
+  {{ ui.field(form.description) }}
+  <div class="fx-form-grid">{{ ui.field(form.source_details) }}{{ ui.field(form.size_bytes) }}</div>
+  {{ ui.field(form.collection_site) }}
+  <div class="d-flex flex-wrap gap-2">
+    <button type="submit" class="fx-btn fx-btn-primary">Save changes</button>
+    <a class="fx-btn fx-btn-ghost" href="{{ url_for('evidence.detail', code=item.evidence_code) }}">Cancel</a>
+  </div>
+</form>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}Close {{ case.case_reference }}{% endblock %}
+{% block content %}
+{% set blocked = blockers.examinations or blockers.evidence %}
+<nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('cases.list_cases') }}">Cases</a><span aria-hidden="true">/</span>
+  <a class="fx-mono" href="{{ url_for('cases.detail', reference=case.case_reference) }}">{{ case.case_reference }}</a><span aria-hidden="true">/</span><span aria-current="page">Close</span></nav>
+{{ ui.page_header("Close case " ~ case.case_reference, case.title) }}
+
+{% if blocked %}
+<section class="fx-alert b-amber" role="alert"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
+  <div><strong>This case can't be closed yet.</strong>
+    <p>Complete or cancel open examinations and return evidence to storage first. The database will refuse the closure until then.</p>
+    <ul class="mb-0 mt-2">
+      {% for x in blockers.examinations %}<li>Examination <span class="fx-mono">{{ x.examination_code }}</span> is {{ x.status }}</li>{% endfor %}
+      {% for e in blockers.evidence %}<li>Evidence <span class="fx-mono">{{ e.evidence_code }}</span> is {{ e.current_status }}</li>{% endfor %}
+    </ul></div></section>
+{% endif %}
+
+<form method="post" novalidate class="fx-card fx-card-b fx-narrow d-flex flex-column gap-3"
+      data-fx-confirm="Close {{ case.case_reference }}? Closed cases can't be reopened or edited." data-fx-busy="Closing…">
+  {{ form.hidden_tag() }}
+  <p class="m-0">Closing records the closure date and makes the case read-only. This can't be undone (decision D3).</p>
+  {{ ui.field(form.summary, help="The outcome in one or two sentences. It appears on the case and in reports.") }}
+  {{ ui.check_field(form.confirm) }}
+  <div class="d-flex flex-wrap gap-2">
+    <button type="submit" class="fx-btn fx-btn-danger" {% if blocked %}disabled{% endif %}>Close case</button>
+    <a class="fx-btn fx-btn-ghost" href="{{ url_for('cases.detail', reference=case.case_reference) }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}
