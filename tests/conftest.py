@@ -5,12 +5,14 @@ import pytest
 
 from app import create_app
 from app.config import TestingConfig
-from app.db import DatabaseError, check_connection
+from app.db import DatabaseError, check_connection, dispose_pool
 
 
 @pytest.fixture
 def app():
-    return create_app(TestingConfig())
+    application = create_app(TestingConfig())
+    yield application
+    dispose_pool(application)      # close this test's MySQL connections
 
 
 @pytest.fixture
@@ -24,11 +26,14 @@ def db_available():
     A skipped test is NOT a passed test: Phase 5 is only verified when the
     tests in test_db.py show as passed."""
     app = create_app(TestingConfig())
-    with app.app_context():
-        try:
-            return check_connection()
-        except DatabaseError as err:
-            pytest.skip(f"MySQL not reachable ({err.detail or err}). Check .env and the MySQL service.")
+    try:
+        with app.app_context():
+            info = check_connection()
+    except DatabaseError as err:
+        dispose_pool(app)
+        pytest.skip(f"MySQL not reachable ({err.detail or err}). Check .env and the MySQL service.")
+    dispose_pool(app)              # this check's connections aren't needed any more
+    yield info
 
 
 # ---------------------------------------------------------------------------

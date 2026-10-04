@@ -43,7 +43,12 @@ ER_TABLEACCESS_DENIED = 1142
 # Exceptions
 # ---------------------------------------------------------------------------
 class DatabaseError(Exception):
-    """Base class. `user_message` is always safe to show on a page."""
+    """Base class. `user_message` is always safe to show on a page.
+
+    str(err) of an unclassified DatabaseError also includes MySQL's error
+    number and text, so logs and test failures say what went wrong. Pages
+    must therefore show `err.user_message`, never str(err), for these.
+    """
 
     user_message = "A database error occurred. Please try again."
 
@@ -53,6 +58,12 @@ class DatabaseError(Exception):
         self.detail = detail        # raw MySQL text: for logs only, never for users
         if message:
             self.user_message = message
+
+    def __str__(self):
+        base = super().__str__()
+        if type(self) is DatabaseError and (self.errno or self.detail):
+            return f"{base} [MySQL error {self.errno}: {self.detail}]"
+        return base
 
 
 class DatabaseUnavailable(DatabaseError):
@@ -138,6 +149,19 @@ def _get_pool():
                 raise translate_error(err) from err
             current_app.extensions[_POOL_KEY] = pool
     return pool
+
+
+def dispose_pool(app):
+    """Close every connection in this app's pool (used when a test's app is
+    thrown away). mysql-connector opens all pool_size connections as soon as
+    the pool is created, so pools that are never closed add up quickly:
+    one per test would exhaust MySQL's max_connections (error 1040)."""
+    pool = app.extensions.pop(_POOL_KEY, None)
+    if pool is not None:
+        try:
+            pool._remove_connections()      # mysql-connector has no public close-all method
+        except Exception:                   # closing is best effort; the process exit frees the rest
+            pass
 
 
 def _client_ip():
