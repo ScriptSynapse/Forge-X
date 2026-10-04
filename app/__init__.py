@@ -44,6 +44,10 @@ def create_app(config=None):
 
     _configure_logging(app)
 
+    if app.config.get("TRUST_CLOUDFLARE"):
+        from .proxy import trust_cloudflare
+        trust_cloudflare(app)
+
     csrf.init_app(app)
     db.init_app(app)
 

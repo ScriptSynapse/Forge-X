@@ -217,7 +217,7 @@ Open http://127.0.0.1:5000 and log in as `paulson`. You land on the dashboard.
 pytest -v
 ```
 
-**Expect about 88 passed and 30 skipped.** The exact split depends on your data.
+**Expect about 91 passed and 30 skipped.** The exact split depends on your data.
 
 * 6 tests skip because they check specific demo records, or need an evidence hash to test against. The skip reason says "demo data not installed" or "empty lab".
 * 24 are the opt-in workflow tests described below.
@@ -348,6 +348,17 @@ Every figure is computed by a MySQL query when the page loads. Nothing is hard-c
   * actions refused in the last 7 days
 * **Audit records can't be changed.** Triggers block edits and deletions, and the app's MySQL account has no UPDATE or DELETE permission on these tables.
 * **Users & roles** has search, role and status filters, pagination, and an *inactive accounts* view (deactivated, never logged in, or no login for 30 days). It also lists recently reviewed access requests and shows each user's full, paginated activity history.
+
+## Hosting on the internet (Cloudflare Tunnel)
+
+FORGE-X can be published through **Cloudflare Tunnel**: the app and MySQL stay on your PC, and Cloudflare provides a public HTTPS address without opening any router ports. Full steps and a security checklist are in **[docs/DEPLOY_CLOUDFLARE.md](docs/DEPLOY_CLOUDFLARE.md)**.
+
+```cmd
+python serve.py                                   (window 1: production server on 127.0.0.1:8000)
+cloudflared tunnel --url http://127.0.0.1:8000    (window 2: prints a public https://...trycloudflare.com address)
+```
+
+Set `FLASK_DEBUG=0`, `SESSION_COOKIE_SECURE=1` and `TRUST_CLOUDFLARE=1` in `.env` first.
 
 ## Optional demonstration data
 

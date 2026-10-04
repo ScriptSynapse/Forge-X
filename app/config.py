@@ -65,6 +65,9 @@ class Config:
         self.LOGIN_MAX_FAILURES_PER_IP = 20
         self.SIGNUP_MAX_PER_IP_PER_HOUR = 5
 
+        # Hosting behind Cloudflare Tunnel (see docs/DEPLOY_CLOUDFLARE.md)
+        self.TRUST_CLOUDFLARE = _bool("TRUST_CLOUDFLARE", False)
+
         # Lists
         self.PAGE_SIZE = 20
 
