@@ -2,7 +2,7 @@
 {% import "macros/ui.html" as ui %}
 {% block title %}Chain of custody{% endblock %}
 {% block content %}
-{{ ui.page_header("Chain of custody", "Every handover, newest first. Entries can't be edited or deleted. " ~ scope.label ~ ".") }}
+{{ ui.page_header("Chain of custody", "Every handover, export and integrity check. Entries can't be edited or deleted; mistakes are fixed with linked corrections. " ~ scope.label ~ ".") }}
 
 <div class="fx-detail-grid">
   <section class="fx-card min-w-0">
@@ -32,25 +32,46 @@
   <form method="get" action="{{ url_for('custody.index') }}" class="fx-filter-bar" role="search">
     <div class="fx-filter-grow"><label class="fx-label" for="f-q">Evidence ID</label>
       <input id="f-q" name="q" class="fx-input fx-mono" value="{{ filters.q }}" placeholder="FX-EV-…"></div>
-    <div><label class="fx-label" for="f-action">Action</label>
-      <select id="f-action" name="action" class="fx-input"><option value="">All actions</option>
+    <div><label class="fx-label" for="f-case">Case</label>
+      <select id="f-case" name="case" class="fx-input"><option value="">All cases</option>
+        {% for c in cases %}<option value="{{ c.case_reference }}" {% if filters.case_reference == c.case_reference %}selected{% endif %}>{{ c.case_reference }}</option>{% endfor %}</select></div>
+    <div><label class="fx-label" for="f-action">Event type</label>
+      <select id="f-action" name="action" class="fx-input"><option value="">All events</option>
         {% for a in actions %}<option value="{{ a }}" {% if filters.action == a %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></div>
+    <div><label class="fx-label" for="f-person">Person involved</label>
+      <select id="f-person" name="person" class="fx-input"><option value="">Anyone</option>
+        {% for p in people %}<option value="{{ p.user_id }}" {% if filters.person_id == p.user_id %}selected{% endif %}>{{ p.full_name }}</option>{% endfor %}</select></div>
     <div><label class="fx-label" for="f-from">From</label><input id="f-from" name="from" type="date" class="fx-input" value="{{ filters.date_from or '' }}"></div>
     <div><label class="fx-label" for="f-to">To</label><input id="f-to" name="to" type="date" class="fx-input" value="{{ filters.date_to or '' }}"></div>
+    <div><label class="fx-label" for="f-order">Order</label>
+      <select id="f-order" name="order" class="fx-input">
+        <option value="newest" {% if filters.order == 'newest' %}selected{% endif %}>Newest first</option>
+        <option value="oldest" {% if filters.order == 'oldest' %}selected{% endif %}>Oldest first (chronological)</option></select></div>
     <div class="fx-filter-actions"><button type="submit" class="fx-btn fx-btn-secondary">Apply</button>
-      {% if filters.active %}<a class="fx-btn fx-btn-ghost" href="{{ url_for('custody.index') }}">Clear</a>{% endif %}</div>
+      {% if filters.active or filters.order != 'newest' %}<a class="fx-btn fx-btn-ghost" href="{{ url_for('custody.index') }}">Clear</a>{% endif %}</div>
   </form>
   {% if page.items %}
   <div class="fx-table-wrap"><table class="fx-table">
-    <thead><tr><th>Entry</th><th>Time</th><th>Evidence</th><th>Action</th><th>From</th><th>To</th><th>Location</th><th>Condition</th><th>Recorded by</th></tr></thead>
+    <thead><tr><th scope="col">Event</th><th scope="col">Time</th><th scope="col">Evidence</th><th scope="col">Case</th><th scope="col">What happened</th>
+      <th scope="col">From</th><th scope="col">To / result</th><th scope="col">Location</th><th scope="col">By</th></tr></thead>
     <tbody>{% for r in page.items %}
-      <tr><td class="fx-mono">#{{ r.custody_id }}</td><td class="fx-mono text-nowrap">{{ r.occurred_at|datetime }}</td>
-          <td><a class="fx-mono" href="{{ url_for('evidence.detail', code=r.evidence_code, tab='custody') }}">{{ r.evidence_code }}</a></td>
-          <td>{{ r.action }}{% if r.corrects_custody_id %}<br><span class="fx-badge b-amber">Correction of #{{ r.corrects_custody_id }}</span>{% endif %}</td>
-          <td>{{ r.from_name or "—" }}</td><td>{{ r.to_name if r.to_name != r.from_name else "No change" }}</td>
-          <td>{{ r.location }}</td><td>{{ r.evidence_condition }}</td><td>{{ r.recorded_by_name }}</td></tr>
+      {% if r.kind == "check" %}
+      <tr class="fx-row-check"><td class="fx-mono">Check #{{ r.event_id }}</td><td class="fx-mono text-nowrap">{{ r.occurred_at|datetime }}</td>
+        <td><a class="fx-mono" href="{{ url_for('evidence.detail', code=r.evidence_code, tab='hashes') }}">{{ r.evidence_code }}</a></td>
+        <td><a class="fx-mono" href="{{ url_for('cases.detail', reference=r.case_reference) }}">{{ r.case_reference }}</a></td>
+        <td><i class="bi bi-shield-check" aria-hidden="true"></i> Integrity check<br><span class="fx-muted small">{{ r.details }}</span></td>
+        <td class="fx-muted">—</td><td>{{ ui.integrity(r.result) }}</td><td class="fx-muted">Custody unchanged</td><td>{{ r.actor_name }}</td></tr>
+      {% else %}
+      <tr><td class="fx-mono">#{{ r.event_id }}</td><td class="fx-mono text-nowrap">{{ r.occurred_at|datetime }}</td>
+        <td><a class="fx-mono" href="{{ url_for('evidence.detail', code=r.evidence_code, tab='custody') }}">{{ r.evidence_code }}</a></td>
+        <td><a class="fx-mono" href="{{ url_for('cases.detail', reference=r.case_reference) }}">{{ r.case_reference }}</a></td>
+        <td>{{ r.event }}{% if r.corrects_custody_id %}<br><span class="fx-badge b-amber">Correction of #{{ r.corrects_custody_id }}</span>{% endif %}
+          {% if r.event == 'Exported' %}<br><span class="fx-muted small">Copy downloaded; original unchanged</span>{% endif %}</td>
+        <td>{{ r.from_name or "—" }}</td><td>{{ r.to_name if r.to_name != r.from_name else "No change" }}</td>
+        <td>{{ r.location }}</td><td>{{ r.actor_name }}</td></tr>
+      {% endif %}
     {% endfor %}</tbody></table></div>
-  {{ ui.pagination(page, "custody.index", filters.as_args(), noun="entries") }}
-  {% else %}{{ ui.empty_state("No custody entries" ~ (" match these filters" if filters.active else " yet"), "Registering evidence creates its first entry (Collected).") }}{% endif %}
+  {{ ui.pagination(page, "custody.index", filters.as_args(), noun="events") }}
+  {% else %}{{ ui.empty_state("No events" ~ (" match these filters" if filters.active else " yet"), "Registering evidence creates its first entry (Collected).") }}{% endif %}
 </section>
 {% endblock %}

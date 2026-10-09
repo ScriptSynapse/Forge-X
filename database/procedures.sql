@@ -706,8 +706,8 @@ BEGIN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'A closure summary is required.';
   END IF;
   IF EXISTS (SELECT 1 FROM examinations
-              WHERE case_id = p_case_id AND status IN ('Pending','In Progress')) THEN
-    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Complete or cancel all examinations before closing the case.';
+              WHERE case_id = p_case_id AND status IN ('Pending','In Progress','Under Review')) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Complete or cancel all examinations (including those under review) before closing the case.';
   END IF;
   IF EXISTS (SELECT 1 FROM evidence
               WHERE case_id = p_case_id

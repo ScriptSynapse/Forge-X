@@ -16,6 +16,8 @@
     <h1 class="fx-page-title">{{ case.title }}</h1>
     <div class="d-flex flex-wrap gap-2 align-items-center">
       {{ ui.badge(case.status) }}{{ ui.priority(case.priority) }}{{ ui.tag(case.type_name) }}
+      <a class="fx-btn fx-btn-ghost fx-btn-sm" href="{{ url_for('graph.index', case=case.case_reference) }}"><i class="bi bi-diagram-3" aria-hidden="true"></i>Relationship graph</a>
+      {% if case.due_date %}<span class="fx-badge {{ 'b-red' if case.is_overdue else 'b-slate' }}">{{ "Overdue, due " if case.is_overdue else "Due " }}{{ case.due_date|date }}</span>{% endif %}
       <span class="fx-muted small">Registered {{ case.created_at|datetime }} by {{ case.created_by_name }}</span>
     </div>
   </div>
@@ -38,9 +40,11 @@
 <nav class="fx-tabs" aria-label="Case sections">
   {{ tab_link("overview", "Overview") }}
   {{ tab_link("evidence", "Evidence", counts.evidence) }}
+  {{ tab_link("custody", "Chain of custody", counts.custody) }}
   {{ tab_link("investigators", "Investigators", counts.investigators) }}
   {{ tab_link("examinations", "Examinations", counts.examinations) }}
   {{ tab_link("reports", "Reports", counts.reports) }}
+  {{ tab_link("notes", "Notes", counts.notes) }}
   {{ tab_link("activity", "Activity history") }}
 </nav>
 
@@ -55,7 +59,7 @@
         <tr>
           <td>{% if has_endpoint('evidence.detail') %}<a class="fx-mono" href="{{ url_for('evidence.detail', code=e.evidence_code) }}">{{ e.evidence_code }}</a>{% else %}<span class="fx-mono">{{ e.evidence_code }}</span>{% endif %}</td>
           <td>{{ e.evidence_type }}</td><td>{{ e.description }}</td>
-          <td>{{ ui.badge(e.current_status) }}</td><td>{{ ui.badge(e.integrity_status) }}</td>
+          <td>{{ ui.badge(e.current_status) }}</td><td>{{ ui.integrity(e.integrity_status) }}</td>
           <td>{{ e.current_custodian }}</td><td>{{ e.current_location or "—" }}</td>
         </tr>
       {% endfor %}
@@ -101,6 +105,7 @@
         <dt>Priority</dt><dd>{{ case.priority }}</dd>
         <dt>Status</dt><dd>{{ case.status }}</dd>
         <dt>Lead</dt><dd>{{ case.lead_name or "No lead assigned" }}</dd>
+        <dt>Due date</dt><dd>{% if case.due_date %}{{ case.due_date|date }}{% if case.is_overdue %} <span class="text-danger-emphasis fw-medium">(overdue)</span>{% endif %}{% else %}None set{% endif %}</dd>
         <dt>Registered</dt><dd>{{ case.created_at|datetime }}</dd>
         <dt>Last updated</dt><dd>{{ case.updated_at|datetime }}</dd>
         <dt>Closed</dt><dd>{{ case.closed_at|datetime if case.closed_at else "Not closed" }}</dd>
@@ -250,6 +255,58 @@
   </div>
   {% else %}{{ ui.empty_state("No reports for this case yet") }}{% endif %}
 </section>
+
+{% elif tab == "custody" %}
+<section class="fx-card">
+  <div class="fx-card-h"><h2>Chain of custody</h2><span class="fx-muted small">Every custody entry for this case's evidence, newest first. Entries can't be edited or deleted.</span></div>
+  {% if custody %}
+  <div class="fx-table-wrap"><table class="fx-table">
+    <thead><tr><th scope="col">Entry</th><th scope="col">Time</th><th scope="col">Evidence</th><th scope="col">Action</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Location</th><th scope="col">Recorded by</th></tr></thead>
+    <tbody>{% for r in custody %}
+      <tr><td class="fx-mono">#{{ r.custody_id }}</td><td class="fx-mono text-nowrap">{{ r.occurred_at|datetime }}</td>
+        <td><a class="fx-mono" href="{{ url_for('evidence.detail', code=r.evidence_code, tab='custody') }}">{{ r.evidence_code }}</a></td>
+        <td>{{ r.action }}{% if r.corrects_custody_id %}<br><span class="fx-badge b-amber">Correction of #{{ r.corrects_custody_id }}</span>{% endif %}</td>
+        <td>{{ r.from_name or "—" }}</td><td>{{ r.to_name if r.to_name != r.from_name else "No change" }}</td>
+        <td>{{ r.location }}</td><td>{{ r.recorded_by_name }}</td></tr>
+    {% endfor %}</tbody></table></div>
+  {% if custody|length >= 200 %}<p class="fx-help px-3 pb-3 mb-0">Showing the latest 200 entries. The full log is under Chain of custody.</p>{% endif %}
+  {% else %}{{ ui.empty_state("No custody entries yet", "Registering evidence creates its first entry (Collected).") }}{% endif %}
+</section>
+
+{% elif tab == "notes" %}
+<section class="fx-card">
+  <div class="fx-card-h"><h2>Notes and references</h2><span class="fx-muted small">Oldest first. Notes can't be edited or deleted; a correction is a new note linked to the old one.</span></div>
+  {% if notes %}
+  <ol class="fx-note-list">{% for n in notes %}
+    <li id="note-{{ n.note_id }}" class="{{ 'is-correction' if n.corrects_note_id }}">
+      <div class="fx-note-head">
+        <span class="fx-mono">#{{ n.note_id }}</span><span class="fw-medium">{{ n.author_name }}</span>
+        <span class="fx-mono fx-muted small">{{ n.created_at|datetime }}</span>
+        {% if n.corrects_note_id %}<a class="fx-badge b-amber" href="#note-{{ n.corrects_note_id }}">Correction of #{{ n.corrects_note_id }}</a>{% endif %}
+        {% for c in n.corrected_by %}<a class="fx-badge b-slate" href="#note-{{ c }}">Corrected by #{{ c }}</a>{% endfor %}
+        {% if note_form is defined %}<a class="small ms-auto" href="{{ url_for('cases.detail', reference=case.case_reference, tab='notes', correct=n.note_id) }}#add-note">Add a correction</a>{% endif %}
+      </div>
+      <p class="fx-prose mb-0">{{ n.note_text }}</p>
+      {% if n.reference %}<p class="small fx-muted mb-0 mt-1">Reference: <span class="fx-mono">{{ n.reference }}</span></p>{% endif %}
+    </li>
+  {% endfor %}</ol>
+  {% else %}{{ ui.empty_state("No notes yet", "Notes record decisions, phone calls, references to other documents and anything else the case file should keep.") }}{% endif %}
+</section>
+{% if note_form is defined %}
+<section class="fx-card" id="add-note" aria-labelledby="add-note-h">
+  <div class="fx-card-h"><h2 id="add-note-h">{{ "Add a correction to note #" ~ note_form.corrects_note_id.data if note_form.corrects_note_id.data else "Add a note" }}</h2></div>
+  <form method="post" action="{{ url_for('cases.add_note', reference=case.case_reference) }}" novalidate class="fx-card-b d-flex flex-column gap-3 fx-narrow" data-fx-busy="Saving…">
+    {{ note_form.hidden_tag() }}
+    {% if note_form.corrects_note_id.data %}<input type="hidden" name="corrects_note_id" value="{{ note_form.corrects_note_id.data }}">{% endif %}
+    {{ ui.field(note_form.note_text, help="Facts, decisions and who said what. Up to 4,000 characters.") }}
+    {{ ui.field(note_form.reference, help="Optional: a document number, ticket ID or link.") }}
+    <div class="d-flex gap-2"><button class="fx-btn fx-btn-primary" type="submit">Save note</button>
+      {% if note_form.corrects_note_id.data %}<a class="fx-btn fx-btn-ghost" href="{{ url_for('cases.detail', reference=case.case_reference, tab='notes') }}">Cancel correction</a>{% endif %}</div>
+  </form>
+</section>
+{% elif not closed %}
+<p class="fx-muted small m-0">Only administrators, custodians and the case's investigators can add notes.</p>
+{% endif %}
 
 {% elif tab == "activity" %}
 <section class="fx-card">

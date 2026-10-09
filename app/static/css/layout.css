@@ -221,3 +221,75 @@
 
 /* Delete-case section */
 .fx-danger-zone { border-color: rgba(240, 82, 82, 0.45); }
+
+/* ---- FORGE-X 2.0 Phase 1: sortable headers, filter notes ------------------------ */
+.fx-sort { display: inline-flex; align-items: center; gap: 4px; color: inherit; text-decoration: none; white-space: nowrap; }
+.fx-sort:hover { color: var(--fx-text); }
+.fx-sort .bi { font-size: 11px; opacity: 0.45; }
+.fx-sort.is-active { color: var(--fx-cyan); }
+.fx-sort.is-active .bi { opacity: 1; }
+.fx-sort:focus-visible { outline: 2px solid var(--fx-cyan); outline-offset: 2px; border-radius: 3px; }
+th.num .fx-sort { justify-content: flex-end; width: 100%; }
+.fx-filter-note { margin: 0; padding: 12px 20px; border-bottom: 1px solid var(--fx-border-soft); font-size: 14px; color: var(--fx-text-2); }
+
+/* ---- FORGE-X 2.0 Phase 2: case notes ------------------------------------------ */
+.fx-note-list { list-style: none; margin: 0; padding: 0; }
+.fx-note-list li { padding: 14px 20px; border-bottom: 1px solid var(--fx-border-soft); }
+.fx-note-list li:last-child { border-bottom: 0; }
+.fx-note-list li.is-correction { border-left: 3px dashed var(--fx-warning); }
+.fx-note-list li:target { background: rgba(53, 191, 255, 0.08); }
+.fx-note-head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 6px; }
+
+/* ---- FORGE-X 2.0 Phase 4: integrity checks and exports in the custody timeline ---- */
+.fx-timeline-item.is-check .fx-timeline-node { border-color: var(--fx-success); color: var(--fx-success); font-size: 14px; }
+.fx-timeline-item.is-check .fx-timeline-card { background: transparent; border-style: dotted; }
+.fx-timeline-item.is-export .fx-timeline-node { border-color: var(--fx-cyan); color: var(--fx-cyan); }
+.fx-row-check td { background: rgba(32, 201, 151, 0.04); }
+
+/* ---- FORGE-X 2.0 Phase 7: YARA rule source ------------------------------------- */
+.fx-code { margin: 0; padding: 14px 20px; max-height: 420px; overflow: auto; background: var(--fx-bg-2); border-top: 1px solid var(--fx-border-soft);
+  border-bottom: 1px solid var(--fx-border-soft); font-family: var(--fx-mono, "IBM Plex Mono", monospace); font-size: 13px; line-height: 1.5; white-space: pre; color: var(--fx-text); }
+.fx-code:focus-visible { outline: 2px solid var(--fx-cyan); outline-offset: -2px; }
+textarea.fx-code-input { min-height: 260px; font-size: 13px; white-space: pre; }
+
+/* ---- FORGE-X 2.0 Phase 8: relationship graph ------------------------------------ */
+.fx-graph { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; }
+@media (max-width: 991px) { .fx-graph { grid-template-columns: 1fr; } }
+.fx-graph-main { display: flex; flex-direction: column; min-height: 560px; overflow: hidden; }
+.fx-graph-toolbar { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--fx-border-soft); }
+.fx-graph-toolbar .fx-input { max-width: 320px; }
+.fx-graph-canvas { flex: 1; width: 100%; min-height: 480px; background: var(--fx-bg-2); cursor: grab; touch-action: none; }
+.fx-graph-canvas:active { cursor: grabbing; }
+.fx-graph-status { margin: 0; padding: 8px 16px; font-size: 13px; color: var(--fx-text-2); border-top: 1px solid var(--fx-border-soft); }
+.fx-graph-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.fx-graph-filters { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.fx-graph-type { margin: 0; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fx-cyan); }
+.fx-graph-title { font-size: 16px; margin: 2px 0 6px; word-break: break-all; }
+.fx-graph-listing summary { cursor: pointer; font-weight: 600; }
+/* nodes */
+.fx-node { cursor: pointer; }
+.fx-node circle { stroke: var(--fx-bg); stroke-width: 2; }
+.fx-node text { fill: var(--fx-text-2); font-size: 11px; pointer-events: none; }
+.fx-node:focus { outline: none; }
+.fx-node:focus circle, .fx-node.is-selected circle { stroke: #fff; stroke-width: 3; }
+.fx-node.is-match circle { stroke: var(--fx-warning); stroke-width: 4; }
+.fx-node.is-dimmed { opacity: 0.25; }
+.fx-node circle.fx-node-alert { fill: var(--fx-danger, #F05252); stroke-width: 1; }
+.t-case circle, .fx-dot.t-case { fill: #35BFFF; background: #35BFFF; }
+.t-evidence circle, .fx-dot.t-evidence { fill: #1677FF; background: #1677FF; }
+.t-exam circle, .fx-dot.t-exam { fill: #20C997; background: #20C997; }
+.t-report circle, .fx-dot.t-report { fill: #A78BFA; background: #A78BFA; }
+.t-user circle, .fx-dot.t-user { fill: #94A3B8; background: #94A3B8; }
+.t-artifact circle, .fx-dot.t-artifact { fill: #2DD4BF; background: #2DD4BF; }
+.t-hash circle, .fx-dot.t-hash { fill: #F4B740; background: #F4B740; }
+.t-rule circle, .fx-dot.t-rule { fill: #F97316; background: #F97316; }
+.fx-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+/* links: three kinds, distinguishable without colour (solid, dashed, dotted) */
+.fx-edge { stroke-width: 1.6; }
+.fx-edge.k-recorded { stroke: #4A6380; }
+.fx-edge.k-result { stroke: #F97316; stroke-dasharray: 7 4; }
+.fx-edge.k-identity { stroke: #F4B740; stroke-dasharray: 2 4; stroke-width: 2.2; }
+.fx-line { display: inline-block; width: 26px; height: 0; margin-right: 6px; vertical-align: middle; border-top: 2px solid; }
+.fx-line.k-recorded { border-color: #4A6380; }
+.fx-line.k-result { border-color: #F97316; border-top-style: dashed; }
+.fx-line.k-identity { border-color: #F4B740; border-top-style: dotted; }

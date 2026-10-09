@@ -28,6 +28,24 @@ PUBLIC_ENDPOINTS = {"static", "public.index", "auth.login", "auth.signup", "auth
 REVIEWED_SQL_FRAGMENTS = {
     "condition", "where", "base", "scope.case_filter", "order_by", "SORTS[filters.sort][1]",
     "LOCK_WINDOW_MINUTES", "int(months) - 1",
+    # FORGE-X 2.0 Phase 1 (dashboard): `since` is "" or " AND <literal column> >= NOW() - INTERVAL %s DAY"
+    # with the days as a parameter; `body` and `alias` come from a fixed tuple in activity_in_period().
+    "since", "body", "alias",
+    # FORGE-X 2.0 Phase 2: a constant expression defined in app/cases/services.py (no input in it).
+    "LAST_ACTIVITY_SQL",
+    # FORGE-X 2.0 Phase 3: constant expressions defined in app/evidence/services.py (no input in them).
+    "CURRENT_HASH_SQL", "EXAM_STATUS_SQL",
+    # FORGE-X 2.0 Phase 4 (custody log): `union` joins two fixed branches built by _branch() with %s
+    # parameters only; `direction` comes from the fixed ORDERS dict (ASC/DESC).
+    "union", "direction",
+    # FORGE-X 2.0 Phase 8 (app/graph/services.py): constants with no input in them, and _in(), which
+    # returns only "%s, %s, ..." placeholders (the values are passed as parameters).
+    "_EVIDENCE_COLUMNS", "_EVIDENCE_FROM", "_ARTIFACT_SELECT", "_LATEST_MATCHES", "_in(values)", "_in(ids)",
+    # FORGE-X 2.0 Phase 9 (app/storage/migrate.py): human-readable NOTE text ("Moved from local ...") passed
+    # as a %s parameter value; it is never part of the SQL statement.
+    "f['backend']",
+    # FORGE-X 2.0 Phase 10 (app/api/routes.py): INDICATOR_SQL with only Scope.case_filter inserted.
+    "indicator_sql",
 }
 # Not SQL at all: user-facing messages / PDF text that merely contain the word "from".
 REVIEWED_NON_SQL = {"code", "file_name", "size", "generated_at", "generated_by", "old['location_name']"}
@@ -149,3 +167,22 @@ def test_every_locking_read_has_the_privilege_it_needs():
                 if table not in lockable:
                     problems.append(f"{path.relative_to(APP_DIR.parent)}:{node.lineno} locks {table}")
     assert not problems, "Locking reads on tables without UPDATE/DELETE privilege:\n" + "\n".join(problems)
+
+
+def test_no_inline_styles_so_the_csp_can_forbid_them():
+    """The Content-Security-Policy allows styles only from this server
+    ('unsafe-inline' was removed in FORGE-X 2.0 Phase 1). Inline style
+    attributes or <style> blocks would be blocked by the browser, so none
+    may exist. JavaScript may still set element.style, which CSP allows."""
+    from app import CONTENT_SECURITY_POLICY
+    style_src = CONTENT_SECURITY_POLICY.split("style-src", 1)[1].split(";", 1)[0]
+    assert "unsafe-inline" not in style_src
+    offenders = []
+    for path in (APP_DIR / "templates").rglob("*.html"):
+        text = path.read_text(encoding="utf-8")
+        if re.search(r"\sstyle\s*=|<style\b", text, re.IGNORECASE):
+            offenders.append(str(path.relative_to(APP_DIR)))
+    for path in (APP_DIR / "static" / "js").glob("*.js"):
+        if re.search(r"setAttribute\(\s*['\"]style|style=", path.read_text(encoding="utf-8")):
+            offenders.append(str(path.relative_to(APP_DIR)))
+    assert not offenders, f"Inline styles would be blocked by the CSP: {offenders}"

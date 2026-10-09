@@ -7,14 +7,14 @@
 {%- endmacro %}
 
 {% block content %}
-<nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('evidence.list_evidence') }}">Evidence</a><span aria-hidden="true">/</span><span class="fx-mono" aria-current="page">{{ item.evidence_code }}</span></nav>
+<nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('evidence.list_evidence') }}">Evidence Vault</a><span aria-hidden="true">/</span><span class="fx-mono" aria-current="page">{{ item.evidence_code }}</span></nav>
 
 <div class="fx-page-header">
   <div class="d-flex flex-column gap-2">
     <span class="fx-mono text-info small">{{ item.evidence_code }}{% if can_view_audit %} <a class="small ms-2" href="{{ url_for('audit.index', ref=item.evidence_code) }}"><i class="bi bi-list-check" aria-hidden="true"></i> Audit trail</a>{% endif %}</span>
     <h1 class="fx-page-title">{{ item.description }}</h1>
     <div class="d-flex flex-wrap gap-2 align-items-center">
-      {{ ui.tag(item.type_name) }}{{ ui.badge(item.current_status) }}{{ ui.badge(item.integrity_status) }}
+      {{ ui.tag(item.type_name) }}{{ ui.badge(item.current_status) }}{{ ui.integrity(item.integrity_status) }}
       <span class="fx-muted small">Case <a class="fx-mono" href="{{ url_for('cases.detail', reference=item.case_reference) }}">{{ item.case_reference }}</a></span>
     </div>
   </div>
@@ -32,13 +32,26 @@
 <nav class="fx-tabs" aria-label="Evidence sections">
   {{ tab_link("overview", "Overview") }}{{ tab_link("hashes", "Hash information", counts.hashes) }}
   {{ tab_link("custody", "Chain of custody", counts.custody) }}{{ tab_link("examinations", "Examinations", counts.examinations) }}
+  {{ tab_link("scans", "YARA scans") }}
   {{ tab_link("metadata", "Related metadata") }}
 </nav>
 
 {% macro custody_timeline(entries) -%}
 <ol class="fx-timeline">
   {% for e in entries %}
-  <li class="fx-timeline-item{% if e.corrects_custody_id %} is-correction{% endif %}{% if e.is_current %} is-current{% endif %}">
+  {% if e.kind == "check" %}
+  <li class="fx-timeline-item is-check">
+    <span class="fx-timeline-node" aria-hidden="true"><i class="bi bi-shield-check"></i></span>
+    <div class="fx-timeline-card">
+      <div class="fx-timeline-head">
+        <span class="fw-semibold">Integrity check</span>{{ ui.integrity(e.result) }}
+        <span class="fx-mono fx-muted small ms-auto">{{ e.verified_at|datetime }}</span>
+      </div>
+      <p class="mb-0 mt-2 small">{{ e.method }}{% if e.sample_file_name %}: <span class="fx-mono">{{ e.sample_file_name }}</span>{% endif %}, by {{ e.verified_by_name }}. Custody unchanged.</p>
+    </div>
+  </li>
+  {% else %}
+  <li class="fx-timeline-item{% if e.corrects_custody_id %} is-correction{% endif %}{% if e.is_current %} is-current{% endif %}{% if e.action == 'Exported' %} is-export{% endif %}">
     <span class="fx-timeline-node" aria-hidden="true">{{ e.step }}</span>
     <div class="fx-timeline-card">
       <div class="fx-timeline-head">
@@ -48,15 +61,17 @@
         {% if e.is_current %}<span class="fx-badge b-cyan">Latest</span>{% endif %}
         <span class="fx-mono fx-muted small ms-auto">{{ e.occurred_at|datetime }}</span>
       </div>
-      <p class="mb-0 mt-2">{% if e.from_name and e.from_name != e.to_name %}{{ e.from_name }} <i class="bi bi-arrow-right" aria-label="to"></i> {{ e.to_name }}
+      <p class="mb-0 mt-2">{% if e.action == 'Exported' %}Copy downloaded by {{ e.recorded_by_name }}; the original stays with {{ e.to_name }}
+        {% elif e.from_name and e.from_name != e.to_name %}{{ e.from_name }} <i class="bi bi-arrow-right" aria-label="to"></i> {{ e.to_name }}
         {% elif e.from_name %}Held by {{ e.to_name }}, no change of custodian{% else %}Taken into custody by {{ e.to_name }}{% endif %}</p>
       <div class="d-flex flex-wrap gap-2 mt-2"><span class="fx-tag">{{ e.location }}</span><span class="fx-tag">{{ e.evidence_condition }}</span>
         {% if e.seal_number %}<span class="fx-tag fx-mono">Seal {{ e.seal_number }}</span>{% endif %}</div>
       <p class="mb-0 mt-2 small">{{ e.reason }}</p>
       <p class="mb-0 mt-2 fx-muted small">Recorded by {{ e.recorded_by_name }}, entry <span class="fx-mono">#{{ e.custody_id }}</span>{% if e.recorded_at != e.occurred_at %}, recorded {{ e.recorded_at|datetime }}{% endif %}</p>
-      {% if actions.correct_custody %}<div class="fx-timeline-actions"><a class="small" href="{{ url_for('custody.correct', code=item.evidence_code, custody_id=e.custody_id) }}">Record a correction to this entry</a></div>{% endif %}
+      {% if actions.correct_custody and e.action != 'Exported' %}<div class="fx-timeline-actions"><a class="small" href="{{ url_for('custody.correct', code=item.evidence_code, custody_id=e.custody_id) }}">Record a correction to this entry</a></div>{% endif %}
     </div>
   </li>
+  {% endif %}
   {% endfor %}
 </ol>
 {%- endmacro %}
@@ -77,7 +92,43 @@
         <dt>Condition at collection</dt><dd>{{ item.collection_condition }}</dd>
         <dt>Registered</dt><dd>{{ item.registered_at|datetime }}</dd>
       </dl></div></section>
-    <section class="fx-card"><div class="fx-card-h"><h2>Integrity</h2>{{ ui.badge(item.integrity_status) }}</div>
+    <section class="fx-card" aria-labelledby="stored-file-h">
+      <div class="fx-card-h"><h2 id="stored-file-h">Stored file</h2>
+        {% if stored_file %}<span class="fx-tag"><i class="bi bi-lock" aria-hidden="true"></i> Read-only</span>{% endif %}</div>
+      <div class="fx-card-b d-flex flex-column gap-3">
+      {% if stored_file %}
+        <dl class="fx-dl">
+          <dt>File</dt><dd class="fx-mono">{{ stored_file.original_name }}</dd>
+          <dt>Type</dt><dd>{{ stored_file.media_type }}</dd>
+          <dt>Size</dt><dd>{{ stored_file.size_bytes|filesize }}</dd>
+          <dt>Stored</dt><dd>{{ stored_file.stored_at|datetime }} by {{ stored_file.stored_by_name }}</dd>
+          <dt>Stored in</dt><dd>{% if stored_file.backend == "s3" %}Object storage <span class="fx-mono small">{{ stored_file.container }}</span>{% else %}Local evidence storage{% endif %}</dd>
+        </dl>
+        <div><span class="small fx-muted">SHA-256 computed while storing</span><code class="fx-hash">{{ stored_file.sha256 }}</code></div>
+        <div class="d-flex flex-wrap gap-2">
+          {% if file_actions.download %}<a class="fx-btn fx-btn-secondary fx-btn-sm" href="{{ url_for('evidence.download_file', code=item.evidence_code) }}"><i class="bi bi-download" aria-hidden="true"></i>Download</a>{% endif %}
+          {% if file_actions.verify_stored %}
+          <form method="post" action="{{ url_for('evidence.verify_stored_file', code=item.evidence_code) }}" data-fx-busy="Hashing…">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="fx-btn fx-btn-primary fx-btn-sm" type="submit"><i class="bi bi-shield-check" aria-hidden="true"></i>Verify stored file</button></form>
+          {% endif %}
+        </div>
+        <p class="fx-help m-0">Downloads are recorded in the audit log. Verifying re-hashes the stored copy without changing it; a mismatch is recorded and the trusted hash is kept.</p>
+      {% else %}
+        <p class="m-0 fx-muted">No file is stored for this item{% if item.integrity_status != 'Not Verified' %}; it can still be verified with a sample file{% endif %}.</p>
+        {% if attach_form %}
+        <form method="post" action="{{ url_for('evidence.attach_file', code=item.evidence_code) }}" enctype="multipart/form-data" novalidate class="d-flex flex-column gap-2" data-fx-busy="Storing…">
+          {{ attach_form.hidden_tag() }}
+          {{ attach_form.evidence_file.label(class_="fx-label") }}
+          {{ attach_form.evidence_file(class_="fx-input fx-file", aria_describedby="attach-help") }}
+          <p id="attach-help" class="fx-help m-0">Up to {{ max_mb }} MB. {% if item.current_hash_value %}It must match the recorded reference hash exactly, or it won't be stored.{% else %}Its SHA-256 becomes this item's original reference hash.{% endif %}</p>
+          <div><button class="fx-btn fx-btn-secondary fx-btn-sm" type="submit">Store file</button></div>
+        </form>
+        {% endif %}
+      {% endif %}
+      </div>
+    </section>
+    <section class="fx-card"><div class="fx-card-h"><h2>Integrity</h2>{{ ui.integrity(item.integrity_status) }}</div>
       <div class="fx-card-b d-flex flex-column gap-2">
         {% if item.current_hash_value %}
           <span class="small fx-muted">Current reference SHA-256</span>{{ hash_value(item.current_hash_value) }}
@@ -134,7 +185,7 @@
     <thead><tr><th>Checked</th><th>By</th><th>Against hash</th><th>Method</th><th>Result</th></tr></thead>
     <tbody>{% for v in verifications %}
       <tr><td class="fx-mono text-nowrap">{{ v.verified_at|datetime }}</td><td>{{ v.verified_by_name }}</td><td class="fx-mono">#{{ v.hash_id }}</td>
-          <td>{{ v.method }}{% if v.sample_file_name %} <span class="fx-mono fx-muted small">{{ v.sample_file_name }}</span>{% endif %}</td><td>{{ ui.badge(v.result) }}</td></tr>
+          <td>{{ v.method }}{% if v.sample_file_name %} <span class="fx-mono fx-muted small">{{ v.sample_file_name }}</span>{% endif %}</td><td>{{ ui.integrity(v.result) }}</td></tr>
     {% endfor %}</tbody></table></div>
   {% else %}
     {% call ui.empty_state("Never verified", "Verify the item against a sample file to record its first check.") %}
@@ -144,7 +195,12 @@
 
 {% elif tab == "custody" %}
 <section class="fx-card"><div class="fx-card-h"><h2>Chain of custody</h2><span class="fx-muted small">Oldest first. Entries can't be edited or deleted; mistakes are fixed with a linked correction.</span></div>
-  <div class="fx-card-b">{{ custody_timeline(timeline) }}</div></section>
+  <div class="fx-card-b">
+    <nav class="fx-segmented mb-3" aria-label="What to show">
+      <a href="{{ url_for('evidence.detail', code=item.evidence_code, tab='custody') }}" {% if not custody_only %}aria-current="true"{% endif %}>Custody and integrity checks</a>
+      <a href="{{ url_for('evidence.detail', code=item.evidence_code, tab='custody', only='custody') }}" {% if custody_only %}aria-current="true"{% endif %}>Custody entries only</a>
+    </nav>
+    {{ custody_timeline(events) }}</div></section>
 
 {% elif tab == "examinations" %}
 <section class="fx-card">
@@ -156,6 +212,28 @@
           <td class="{{ 'text-danger-emphasis fw-medium' if x.is_overdue }}">{{ (x.due_date|date) if x.due_date else "—" }}{% if x.is_overdue %} (overdue){% endif %}</td></tr>
     {% endfor %}</tbody></table></div>
   {% else %}{{ ui.empty_state("Not linked to any examination yet") }}{% endif %}
+</section>
+
+{% elif tab == "scans" %}
+<section class="fx-card" aria-labelledby="scans-h">
+  <div class="fx-card-h"><h2 id="scans-h">YARA scans</h2><span class="fx-muted small">Scans run in an isolated worker on the stored copy; the original is never changed.</span></div>
+  {% if can_scan %}
+  <div class="fx-card-b d-flex flex-wrap gap-3 align-items-center border-bottom">
+    <form method="post" action="{{ url_for('yara.scan', code=item.evidence_code) }}" data-fx-busy="Scanning…">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="fx-btn fx-btn-primary" type="submit" {% if not applicable_rules %}disabled{% endif %}><i class="bi bi-bug" aria-hidden="true"></i>Run YARA scan</button></form>
+    <span class="fx-muted small">{% if applicable_rules %}{{ applicable_rules|length }} enabled rule{{ "s" if applicable_rules|length != 1 }} apply: {{ applicable_rules|map(attribute="name")|join(", ") }}{% else %}No enabled rules apply to this case yet.{% endif %}</span>
+  </div>
+  {% elif not stored_file %}<p class="fx-card-b m-0 fx-muted">Only stored evidence files can be scanned. Store the file from the Overview tab first.</p>{% endif %}
+  {% if scans %}<div class="fx-table-wrap"><table class="fx-table">
+    <thead><tr><th scope="col">Scan</th><th scope="col">When</th><th scope="col">Status</th><th scope="col" class="num">Rules</th><th scope="col" class="num">Matched</th><th scope="col">File hash</th><th scope="col">By</th></tr></thead>
+    <tbody>{% for s in scans %}<tr><td><a class="fx-mono" href="{{ url_for('yara.scan_detail', scan_id=s.scan_id) }}">#{{ s.scan_id }}</a></td>
+      <td class="fx-mono small text-nowrap">{{ s.started_at|datetime }}</td>
+      <td>{% set tone = {"Completed": "b-green", "Failed": "b-red", "Timed out": "b-amber", "Memory limit": "b-amber"}[s.status] %}<span class="fx-badge {{ tone }}">{{ s.status }}</span></td>
+      <td class="num">{{ s.rules_count }}</td><td class="num">{% if s.status == "Completed" %}<span class="{{ 'text-danger-emphasis fw-semibold' if s.matched_count }}">{{ s.matched_count }}</span>{% else %}—{% endif %}</td>
+      <td>{% if s.hash_matches is none %}—{% elif s.hash_matches %}<span class="fx-badge b-green">Matched</span>{% else %}<span class="fx-badge b-red">Mismatch</span>{% endif %}</td>
+      <td>{{ s.requested_by_name }}</td></tr>{% endfor %}</tbody></table></div>
+  {% else %}{{ ui.empty_state("No scans yet") }}{% endif %}
 </section>
 
 {% elif tab == "metadata" %}
@@ -170,7 +248,7 @@
     <dt>Seals recorded</dt><dd>{% set seals = timeline|selectattr("seal_number")|map(attribute="seal_number")|unique|list %}{{ seals|join(", ") if seals else "None" }}</dd>
     <dt>Custody entries</dt><dd>{{ counts.custody }} ({{ timeline|selectattr("corrects_custody_id")|list|length }} corrections)</dd>
     <dt>Recorded hashes</dt><dd>{{ counts.hashes }}</dd>
-    <dt>Integrity status</dt><dd>{{ item.integrity_status }} (from view <span class="fx-mono">v_evidence_integrity</span>)</dd>
+    <dt>Integrity status</dt><dd>{{ item.integrity_status|integrity_label }} (stored value {{ item.integrity_status }}, from view <span class="fx-mono">v_evidence_integrity</span>)</dd>
   </dl></div></section>
 {% endif %}
 {% endblock %}

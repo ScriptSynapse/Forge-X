@@ -108,3 +108,37 @@ def test_unassigned_investigator_gets_404(app, client, make_user):
     client.post("/logout")
     login(client, outsider["username"], outsider["password"])
     assert client.get(f"/cases/{reference}").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# FORGE-X 2.0 Phase 2: due dates and notes, end to end
+# ---------------------------------------------------------------------------
+def test_due_date_notes_and_corrections(app, client, make_user):
+    admin, lead, outsider = make_user("Administrator"), make_user("Investigator"), make_user("Investigator")
+    login(client, admin["username"], admin["password"])
+    reference = client.post("/cases/new", data={"title": "Pytest notes case", "case_type_id": "1", "priority": "High",
+                                                "description": "Phase 2 notes and due dates.",
+                                                "lead_user_id": str(lead["user_id"]), "due_date": "2099-12-31"}
+                            ).headers["Location"].rsplit("/", 1)[-1]
+    with app.app_context():
+        case_id = query_value("SELECT case_id FROM cases WHERE case_reference = %s", (reference,))
+        assert str(query_value("SELECT due_date FROM cases WHERE case_id = %s", (case_id,))) == "2099-12-31"
+    client.post("/logout")
+
+    login(client, lead["username"], lead["password"])
+    assert client.post(f"/cases/{reference}/notes", data={"note_text": "Spoke to the IT manager",
+                                                          "reference": "TICKET-1"}).status_code == 302
+    with app.app_context():
+        first = query_value("SELECT MAX(note_id) FROM case_notes WHERE case_id = %s", (case_id,))
+    client.post(f"/cases/{reference}/notes", data={"note_text": "Correction: the deputy IT manager",
+                                                   "corrects_note_id": str(first)})
+    page = client.get(f"/cases/{reference}?tab=notes").get_data(as_text=True)
+    assert f"Corrected by #{first + 1}" in page or "Corrected by #" in page
+    client.post("/logout")
+
+    login(client, outsider["username"], outsider["password"])
+    assert client.post(f"/cases/{reference}/notes", data={"note_text": "Not my case"}).status_code == 404
+    with app.app_context():
+        assert query_value("SELECT COUNT(*) FROM case_notes WHERE case_id = %s", (case_id,)) == 2
+        assert query_value("SELECT COUNT(*) FROM audit_logs WHERE action = 'case.note' AND entity_ref = %s",
+                           (reference,)) == 2

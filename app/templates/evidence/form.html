@@ -3,7 +3,7 @@
 {% block title %}{{ "Register evidence" if mode == "create" else "Edit " ~ item.evidence_code }}{% endblock %}
 {% block content %}
 {% set creating = mode == "create" %}
-<nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('evidence.list_evidence') }}">Evidence</a><span aria-hidden="true">/</span>
+<nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('evidence.list_evidence') }}">Evidence Vault</a><span aria-hidden="true">/</span>
   {% if creating %}<span aria-current="page">Register</span>
   {% else %}<a class="fx-mono" href="{{ url_for('evidence.detail', code=item.evidence_code) }}">{{ item.evidence_code }}</a><span aria-hidden="true">/</span><span aria-current="page">Edit</span>{% endif %}</nav>
 
@@ -13,7 +13,7 @@
   <div class="fx-alert b-amber" role="status"><i class="bi bi-info-circle" aria-hidden="true"></i>
     <div><strong>There are no open cases you can add evidence to.</strong><p>Investigators can register evidence only for open cases they're assigned to.</p></div></div>
 {% else %}
-<form method="post" novalidate class="fx-card fx-card-b fx-narrow d-flex flex-column gap-4" data-fx-busy="Registering…">
+<form method="post" enctype="multipart/form-data" novalidate class="fx-card fx-card-b fx-narrow d-flex flex-column gap-4" data-fx-busy="Registering…">
   {{ form.hidden_tag() }}
   <fieldset class="fx-fieldset"><legend>The item</legend>
     <div class="fx-form-grid">{{ ui.field(form.case_id) }}{{ ui.field(form.evidence_type_id) }}</div>
@@ -28,7 +28,15 @@
     {{ ui.field(form.collection_site, help="Where it was collected, e.g. Finance server room, 3rd floor.") }}
     <div class="fx-form-grid">{{ ui.field(form.collection_condition) }}{{ ui.field(form.seal_number, help="Optional, e.g. FX-S-1300.") }}</div>
   </fieldset>
+  <fieldset class="fx-fieldset"><legend>Evidence file <span class="fx-muted fw-normal">(optional)</span></legend>
+    <div class="fx-field">
+      {{ form.evidence_file.label(class_="fx-label") }}
+      {{ form.evidence_file(class_="fx-input fx-file", aria_describedby="file-help") }}
+      <p id="file-help" class="fx-help">Up to {{ max_mb }} MB, synthetic data only. FORGE-X stores the file in protected evidence storage, read-only, under a generated name, and records its SHA-256 as the original reference hash. Leave empty for physical items you register by description only.</p>
+    </div>
+  </fieldset>
   <fieldset class="fx-fieldset"><legend>Original hash <span class="fx-muted fw-normal">(optional)</span></legend>
+    <p class="fx-help m-0">If you attach a file and also enter the hash from your acquisition tool, the two must match, or nothing is registered.</p>
     {{ ui.field(form.original_hash, help="64 hexadecimal characters. You can also record it later from the item's Hash information tab.", extra_class="fx-mono") }}
     <div class="fx-form-grid">{{ ui.field(form.hash_source) }}{{ ui.field(form.hash_notes, help="Required when copied from another record.") }}</div>
   </fieldset>

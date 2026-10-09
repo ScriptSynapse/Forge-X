@@ -40,15 +40,23 @@ def test_examination_and_report_workflow(app, client, make_user):
     exam_code = r.headers["Location"].rsplit("/", 1)[-1]
     assert re.fullmatch(r"EX-\d{4}-\d{4}", exam_code)
     client.post(f"/examinations/{exam_code}/start")
-    refused = client.post(f"/examinations/{exam_code}/complete", follow_redirects=True)
+    refused = client.post(f"/examinations/{exam_code}/submit", follow_redirects=True)
     assert "Record the tools and methods and the findings" in refused.get_data(as_text=True)
     client.post(f"/examinations/{exam_code}/record", data={"tools_methods": "Filtered log export", "observations": "12 failed logons",
-                                                            "findings": "Password spraying", "limitations": "Logs rotated"})
-    client.post(f"/examinations/{exam_code}/complete")
+                                                            "findings": "Password spraying", "conclusion": "Account targeted",
+                                                            "limitations": "Logs rotated"})
+    # FORGE-X 2.0 Phase 5: artifacts, then submission for an independent review
+    assert client.post(f"/examinations/{exam_code}/artifacts", data={"artifact_type": "Log entry", "evidence_id": str(evidence_id),
+                                                                     "description": "12 failed logons from one IP",
+                                                                     "location": "auth.log lines 1200-1212", "sha256": ""}
+                       ).status_code == 302
+    client.post(f"/examinations/{exam_code}/submit")
+    assert client.post(f"/examinations/{exam_code}/approve").status_code == 403          # the examiner can't approve
     with app.app_context():
-        exam = query_one("SELECT examination_id, status, started_at IS NOT NULL AS started, completed_at IS NOT NULL AS completed "
-                         "FROM examinations WHERE examination_code = %s", (exam_code,))
-    assert (exam["status"], exam["started"], exam["completed"]) == ("Completed", 1, 1)
+        exam = query_one("SELECT examination_id, status FROM examinations WHERE examination_code = %s", (exam_code,))
+        assert exam["status"] == "Under Review"
+        assert query_value("SELECT COUNT(*) FROM examination_artifacts WHERE examination_id = %s",
+                           (exam["examination_id"],)) == 1
 
     # Report: create (citing the exam), revise, submit
     r = client.post("/reports/new", data={"case_id": str(case_id), "title": "Pytest report", "methodology": "Log review",
@@ -67,8 +75,15 @@ def test_examination_and_report_workflow(app, client, make_user):
     assert row == {"status": "Under Review", "v": 2}
     client.post("/logout")
 
-    # The administrator (not the author) approves and exports the PDF
+    # The administrator (not the examiner, not the author) approves the examination and the report
     login(client, admin["username"], admin["password"])
+    assert client.post(f"/examinations/{exam_code}/approve", data={"note": "Reviewed"}).status_code == 302
+    with app.app_context():
+        done = query_one("SELECT status, reviewed_by, completed_at IS NOT NULL AS completed FROM examinations "
+                         "WHERE examination_code = %s", (exam_code,))
+    assert (done["status"], done["reviewed_by"], done["completed"]) == ("Completed", admin["user_id"], 1)
+    exam_pdf = client.get(f"/examinations/{exam_code}/pdf")
+    assert exam_pdf.status_code == 200 and exam_pdf.data.startswith(b"%PDF")
     assert client.post(f"/reports/{report_code}/approve").status_code == 302
     pdf = client.get(f"/reports/{report_code}/pdf")
     assert pdf.status_code == 200 and pdf.data.startswith(b"%PDF")
@@ -77,5 +92,8 @@ def test_examination_and_report_workflow(app, client, make_user):
         assert query_value("SELECT status FROM forensic_reports WHERE report_code = %s", (report_code,)) == "Approved"
         actions = {r["action"] for r in query_all("SELECT action FROM audit_logs WHERE entity_ref IN (%s, %s)",
                                                   (exam_code, report_code))}
-    assert {"exam.create", "exam.start", "exam.update", "exam.complete", "report.create", "report.revise",
-            "report.submit", "report.approve", "report.export"} <= actions
+    assert {"exam.create", "exam.start", "exam.update", "exam.artifact", "exam.submit", "exam.approve", "exam.export",
+            "report.create", "report.revise", "report.submit", "report.approve", "report.export"} <= actions
+    client.post("/logout")
+    login(client, lead["username"], lead["password"])            # completed examinations are final
+    assert client.get(f"/examinations/{exam_code}/record").status_code == 403

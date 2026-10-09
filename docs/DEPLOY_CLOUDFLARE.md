@@ -96,7 +96,11 @@ Visitors who aren't on the list never reach FORGE-X, including its public signup
 - [ ] For a named tunnel: Cloudflare Access is limited to your team
 - [ ] `flask --app run check-db` shows **All checks passed**
 
-## 6. Everyday running
+## 6. Evidence files and the upload limit
+
+Cloudflare's free plan rejects request bodies over 100 MB, which is why `EVIDENCE_MAX_MB` defaults to 100. Raising it only helps for local use: uploads through the tunnel would still be cut off at 100 MB. Back up `EVIDENCE_STORAGE_DIR` together with the database.
+
+## 7. Everyday running
 
 | Step | Quick tunnel | Named tunnel |
 |---|---|---|

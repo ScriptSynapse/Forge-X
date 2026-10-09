@@ -162,3 +162,24 @@ def can_edit_report(user, report):
 def can_review_report(user, report):
     return (report["status"] == "Under Review" and report["case_status"] != "Closed"
             and ADMIN in user["roles"] and user["user_id"] != report["author_id"])
+
+
+def can_add_case_note(user, case, assigned):
+    """Notes (FORGE-X 2.0): administrators, evidence custodians and the case's
+    investigators may add notes while the case is open. Auditors only read."""
+    if case["status"] == "Closed":
+        return False
+    roles = set(user["roles"])
+    return bool({ADMIN, CUSTODIAN} & roles) or (INVESTIGATOR in roles and assigned)
+
+
+
+def can_review_examination(user, exam):
+    """FORGE-X 2.0 (U3): an examination Under Review is approved or returned by
+    an Administrator or the case's lead investigator who is NOT the examiner
+    (also CHECK chk_exam_independent in MySQL)."""
+    if exam["status"] != "Under Review" or exam["case_status"] == "Closed":
+        return False
+    if user["user_id"] == exam["examiner_id"]:
+        return False
+    return ADMIN in user["roles"] or user["user_id"] == exam.get("lead_user_id")

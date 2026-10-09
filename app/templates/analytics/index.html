@@ -19,7 +19,7 @@
          data-endpoint="{{ url_for('analytics.chart_data', chart_id=c.id, months=months) }}">
       <p class="fx-muted small mt-0">{{ c.description }}</p>
       <div class="fx-chart-state" data-state="loading" aria-busy="true">
-        <span class="fx-skeleton" style="height:14px;width:70%"></span><span class="fx-skeleton" style="height:14px;width:90%"></span>
+        <span class="fx-skeleton fx-skel-70"></span><span class="fx-skeleton fx-skel-90"></span>
         <span class="fx-muted small">Running the query…</span></div>
       <div class="fx-chart-state" data-state="empty" hidden><p class="fw-semibold mb-1">No data for this period</p>
         <p class="fx-muted small mb-0">The chart fills in as records are added.</p></div>

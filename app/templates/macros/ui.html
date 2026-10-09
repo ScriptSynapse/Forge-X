@@ -6,6 +6,12 @@
 <span class="fx-badge {{ value|tone }}">{{ value }}</span>
 {%- endmacro %}
 
+{# Integrity status or verification result: colour from the stored value,
+   wording from INTEGRITY_LABELS (e.g. Failed -> "Integrity mismatch"). #}
+{% macro integrity(value) -%}
+<span class="fx-badge {{ value|tone }}">{{ value|integrity_label }}</span>
+{%- endmacro %}
+
 {# Square category tag, e.g. an evidence type or role. #}
 {% macro tag(value) -%}
 <span class="fx-tag">{{ value }}</span>
@@ -84,4 +90,15 @@
   {% if message %}<p class="fx-empty-text">{{ message }}</p>{% endif %}
   {% if caller %}<div>{{ caller() }}</div>{% endif %}
 </div>
+{%- endmacro %}
+
+{# Sortable column header. Clicking toggles ascending/descending; other
+   filters are kept and paging restarts. `args` = filters.as_args(). #}
+{% macro sort_th(label, key, current, endpoint, args, extra_class="") -%}
+{% set ascending, descending = current == key, current == "-" ~ key %}
+{% set next_sort = ("-" ~ key) if ascending else key %}
+{% set link_args = dict(args) %}{% set _ = link_args.pop("sort", None) %}{% set _ = link_args.pop("page", None) %}
+<th scope="col" class="{{ extra_class }}" aria-sort="{{ 'ascending' if ascending else ('descending' if descending else 'none') }}">
+  <a class="fx-sort{{ ' is-active' if ascending or descending }}" href="{{ url_for(endpoint, sort=next_sort, **link_args) }}">{{ label }}<i class="bi {{ 'bi-caret-up-fill' if ascending else ('bi-caret-down-fill' if descending else 'bi-chevron-expand') }}" aria-hidden="true"></i></a>
+</th>
 {%- endmacro %}

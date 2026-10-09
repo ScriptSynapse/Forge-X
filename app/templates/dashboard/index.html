@@ -3,10 +3,10 @@
 {% block title %}Dashboard{% endblock %}
 {% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">{% endblock %}
 
-{# A stat card links to its list page once that page exists (later phases). #}
-{% macro stat_card(label, value, note, endpoint=None, tone="") -%}
+{# A stat card opens the exactly matching filtered list. #}
+{% macro stat_card(label, value, note, endpoint=None, tone="", args={}) -%}
 {% set tag = "a" if endpoint and has_endpoint(endpoint) else "div" %}
-<{{ tag }} class="fx-card fx-stat"{% if tag == "a" %} href="{{ url_for(endpoint) }}"{% endif %}>
+<{{ tag }} class="fx-card fx-stat"{% if tag == "a" %} href="{{ url_for(endpoint, **args) }}"{% endif %}>
   <span class="fx-stat-label">{{ label }}</span>
   <span class="fx-stat-value {{ tone }}">{{ value }}</span>
   <span class="fx-stat-note">{{ note }}</span>
@@ -17,44 +17,112 @@
 {% call ui.page_header("Dashboard", scope.label ~ ", as of " ~ (as_of|datetime) ~ ".") %}
   {% if can_register_evidence and has_endpoint('evidence.create') %}<a class="fx-btn fx-btn-secondary" href="{{ url_for('evidence.create') }}">Register evidence</a>{% endif %}
   {% if can_create_case and has_endpoint('cases.create') %}<a class="fx-btn fx-btn-primary" href="{{ url_for('cases.create') }}">New case</a>{% endif %}
+  {% if can_create_examination and has_endpoint('examinations.create') %}<a class="fx-btn fx-btn-secondary" href="{{ url_for('examinations.create') }}">New examination</a>{% endif %}
 {% endcall %}
 
 {% set c = stats.cases %}{% set e = stats.evidence %}{% set i = stats.integrity %}
-<section aria-label="Summary" class="fx-stat-grid">
+<h2 class="fx-section-title">Current state</h2>
+<section aria-label="Current state" class="fx-stat-grid">
   {{ stat_card("Total cases", c.total, "All registered cases" if scope.lab_wide else "Cases you are assigned to", "cases.list_cases") }}
-  {{ stat_card("Open cases", c.open_cases, c.s_open ~ " open, " ~ c.s_progress ~ " in progress, " ~ c.s_hold ~ " on hold", "cases.list_cases") }}
-  {{ stat_card("Closed cases", c.closed, c.closed_recent ~ " closed in the last 30 days", "cases.list_cases") }}
+  {{ stat_card("Open cases", c.open_cases, c.s_open ~ " open, " ~ c.s_progress ~ " in progress, " ~ c.s_hold ~ " on hold", "cases.list_cases", "", {"status": "active"}) }}
+  {{ stat_card("High-priority open", c.high_priority_open, "Critical or High, not closed", "cases.list_cases", "is-amber" if c.high_priority_open else "", {"status": "active", "priority": "urgent"}) }}
   {{ stat_card("Total evidence", e.total, "Across " ~ e.cases_with_evidence ~ " case" ~ ("s" if e.cases_with_evidence != 1 else ""), "evidence.list_evidence") }}
-  {{ stat_card("Evidence in storage", e.in_storage, "In vaults, rooms and lockers", "evidence.list_evidence") }}
-  {{ stat_card("Under examination", e.under_exam, "With examiners now", "evidence.list_evidence", "is-cyan") }}
+  {{ stat_card("Awaiting examination", e.awaiting_exam, "Linked to an examination not yet started", "evidence.list_evidence", "", {"awaiting": "1"}) }}
+  {{ stat_card("Under examination", e.under_exam, "With examiners now", "evidence.list_evidence", "is-cyan", {"status": "Under Examination"}) }}
   {{ stat_card("Pending transfers", e.pending_transfers, e.checked_out ~ " checked out, " ~ e.in_transit ~ " in transit", "custody.index", "is-amber" if e.pending_transfers else "") }}
+  {{ stat_card("Completed examinations", work.exams_completed, work.exams_in_progress ~ " in progress, " ~ work.exams_under_review ~ " under review", "examinations.list_examinations", "", {"status": "Completed"}) }}
+  {{ stat_card("Reports pending review", work.reports_under_review, work.reports_draft ~ " draft" ~ ("s" if work.reports_draft != 1 else ""), "reports.list_reports", "is-amber" if work.reports_under_review else "", {"status": "Under Review"}) }}
   {% set tag = "a" if has_endpoint('evidence.list_evidence') else "div" %}
-  <{{ tag }} class="fx-card fx-stat"{% if tag == "a" %} href="{{ url_for('evidence.list_evidence') }}"{% endif %}>
+  <{{ tag }} class="fx-card fx-stat"{% if tag == "a" %} href="{{ url_for('evidence.list_evidence', integrity='Failed') if i.Failed else url_for('evidence.list_evidence', integrity='Verified') }}"{% endif %}>
     <span class="fx-stat-label">Integrity verification</span>
     <span class="fx-stat-inline"><span class="fx-stat-value is-green">{{ i.Verified }}</span><span class="fx-stat-note">of {{ e.total }} verified</span></span>
     {% if e.total %}
     <span class="fx-integrity-bar" role="img"
-          aria-label="{{ i.Verified }} verified, {{ i.Failed }} failed, {{ i.Pending }} pending, {{ i['Not Verified'] }} not verified">
+          aria-label="{{ i.Verified }} verified, {{ i.Failed }} integrity mismatch, {{ i.Pending }} pending verification, {{ i['Not Verified'] }} verification unavailable">
       <span class="seg-verified" data-fx-width="{{ stats.integrity_pct.Verified }}"></span><span class="seg-failed" data-fx-width="{{ stats.integrity_pct.Failed }}"></span><span class="seg-pending" data-fx-width="{{ stats.integrity_pct.Pending }}"></span>
     </span>
     {% endif %}
-    <span class="fx-stat-note"><span class="{{ 'text-danger-emphasis' if i.Failed else '' }}">{{ i.Failed }} failed</span>, {{ i.Pending }} pending, {{ i['Not Verified'] }} not verified</span>
+    <span class="fx-stat-note"><span class="{{ 'text-danger-emphasis' if i.Failed else '' }}">{{ i.Failed }} mismatch</span>, {{ i.Pending }} pending, {{ i['Not Verified'] }} unavailable</span>
   </{{ tag }}>
 </section>
 
 {% set show_requests = 'Administrator' in current_user.roles %}
-{% if attention.overdue_exams or attention.failed_integrity or attention.reports_in_review or (show_requests and attention.pending_requests) %}
+{% if attention.overdue_exams or attention.failed_integrity or attention.reports_in_review or attention.exams_in_review or (show_requests and attention.pending_requests) %}
 <section class="fx-card fx-attention" aria-labelledby="attention-h">
   <div class="fx-card-h"><h2 id="attention-h">Needs attention</h2></div>
   <ul class="fx-attention-list">
-    {% if attention.overdue_exams %}<li><span class="fx-badge b-red">{{ attention.overdue_exams }}</span> examination{{ "s" if attention.overdue_exams != 1 }} past due date</li>{% endif %}
-    {% if attention.failed_integrity %}<li><span class="fx-badge b-red">{{ attention.failed_integrity }}</span> evidence item{{ "s" if attention.failed_integrity != 1 }} whose latest hash check failed</li>{% endif %}
-    {% if attention.reports_in_review %}<li><span class="fx-badge b-amber">{{ attention.reports_in_review }}</span> report{{ "s" if attention.reports_in_review != 1 }} awaiting review</li>{% endif %}
+    {% if attention.overdue_exams %}<li><span class="fx-badge b-red">{{ attention.overdue_exams }}</span> examination{{ "s" if attention.overdue_exams != 1 }} past due date
+      {% if has_endpoint('examinations.list_examinations') %}<a href="{{ url_for('examinations.list_examinations', overdue=1) }}">View</a>{% endif %}</li>{% endif %}
+    {% if attention.failed_integrity %}<li><span class="fx-badge b-red">{{ attention.failed_integrity }}</span> evidence item{{ "s" if attention.failed_integrity != 1 }} with an integrity mismatch
+      <a href="{{ url_for('evidence.list_evidence', integrity='Failed') }}">View</a></li>{% endif %}
+    {% if attention.exams_in_review %}<li><span class="fx-badge b-amber">{{ attention.exams_in_review }}</span> examination{{ "s" if attention.exams_in_review != 1 }} awaiting review
+      {% if has_endpoint('examinations.list_examinations') %}<a href="{{ url_for('examinations.list_examinations', status='Under Review') }}">View</a>{% endif %}</li>{% endif %}
+    {% if attention.reports_in_review %}<li><span class="fx-badge b-amber">{{ attention.reports_in_review }}</span> report{{ "s" if attention.reports_in_review != 1 }} awaiting review
+      {% if has_endpoint('reports.list_reports') %}<a href="{{ url_for('reports.list_reports', status='Under Review') }}">View</a>{% endif %}</li>{% endif %}
     {% if show_requests and attention.pending_requests %}<li><span class="fx-badge b-amber">{{ attention.pending_requests }}</span> account request{{ "s" if attention.pending_requests != 1 }} to review
       {% if has_endpoint('users.index') %}<a href="{{ url_for('users.index') }}">Review</a>{% endif %}</li>{% endif %}
   </ul>
 </section>
 {% endif %}
+
+<div class="fx-section-row">
+  <h2 class="fx-section-title" id="period-h">Activity: {{ period_label|lower }}</h2>
+  <nav class="fx-segmented" aria-label="Period for activity figures">
+    {% for key, (label, _days) in periods.items() %}
+    <a href="{{ url_for('dashboard.index', period=key) }}" {% if key == period %}aria-current="true"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </nav>
+</div>
+<section class="fx-stat-strip" aria-labelledby="period-h">
+  <div><span class="fx-muted small">Cases opened</span><strong>{{ in_period.cases_opened }}</strong></div>
+  <div><span class="fx-muted small">Evidence registered</span><strong>{{ in_period.evidence_registered }}</strong></div>
+  <div><span class="fx-muted small">Custody entries</span><strong>{{ in_period.custody_entries }}</strong></div>
+  <div><span class="fx-muted small">Hash checks verified</span><strong class="text-success-emphasis">{{ in_period.checks_verified }}</strong></div>
+  <div><span class="fx-muted small">Integrity mismatches</span><strong class="{{ 'text-danger-emphasis' if in_period.checks_failed }}">{{ in_period.checks_failed }}</strong></div>
+  <div><span class="fx-muted small">Examinations completed</span><strong>{{ in_period.exams_completed }}</strong></div>
+</section>
+
+<div class="fx-panel-grid">
+  <section class="fx-card" aria-labelledby="exam-progress-h">
+    <div class="fx-card-h"><h2 id="exam-progress-h">Examination progress</h2>
+      {% if has_endpoint('examinations.list_examinations') %}<a class="small" href="{{ url_for('examinations.list_examinations') }}">All examinations</a>{% endif %}</div>
+    {% set exam_total = work.exams_pending + work.exams_in_progress + work.exams_under_review + work.exams_completed + work.exams_cancelled %}
+    {% if exam_total %}
+    <ul class="fx-progress-list">
+      {% for label, value, cls in [("Pending", work.exams_pending, "seg-pending"), ("In Progress", work.exams_in_progress, "seg-progress"), ("Under Review", work.exams_under_review, "seg-review"), ("Completed", work.exams_completed, "seg-verified"), ("Cancelled", work.exams_cancelled, "seg-muted")] %}
+      <li><a href="{{ url_for('examinations.list_examinations', status=label) }}">{{ label }}</a>
+        <span class="fx-progress-track" aria-hidden="true"><span class="{{ cls }}" data-fx-width="{{ (value * 100 / exam_total)|round(1) }}"></span></span>
+        <span class="fx-mono">{{ value }}</span></li>
+      {% endfor %}
+    </ul>
+    {% if work.exams_overdue %}<p class="fx-card-b pt-0 mb-0 small text-danger-emphasis">{{ work.exams_overdue }} past due date.</p>{% endif %}
+    {% else %}{{ ui.empty_state("No examinations yet") }}{% endif %}
+  </section>
+
+  <section class="fx-card" aria-labelledby="alerts-h">
+    <div class="fx-card-h"><h2 id="alerts-h">Integrity alerts</h2></div>
+    {% if alerts %}
+    <ul class="fx-role-list">{% for a in alerts %}
+      <li><span class="d-flex flex-column"><a class="fx-mono" href="{{ url_for('evidence.detail', code=a.evidence_code, tab='hashes') }}">{{ a.evidence_code }}</a>
+        <span class="fx-muted small">{{ a.description }}</span></span>
+        <span class="d-flex flex-column align-items-end">{{ ui.integrity("Failed") }}<span class="fx-mono fx-muted small">{{ a.last_verified_at|datetime }}</span></span></li>
+    {% endfor %}</ul>
+    {% else %}{{ ui.empty_state("No integrity mismatches", "Items whose latest hash check failed appear here.") }}{% endif %}
+  </section>
+
+  <section class="fx-card" aria-labelledby="custody-h">
+    <div class="fx-card-h"><h2 id="custody-h">Recent custody events</h2>
+      {% if has_endpoint('custody.index') %}<a class="small" href="{{ url_for('custody.index') }}">Custody log</a>{% endif %}</div>
+    {% if custody %}
+    <ol class="fx-mini-activity">{% for cev in custody %}
+      <li><span><a class="fx-mono" href="{{ url_for('evidence.detail', code=cev.evidence_code, tab='custody') }}">{{ cev.evidence_code }}</a>
+        {{ cev.action }}{% if cev.corrects_custody_id %} <span class="fx-badge b-amber">correction</span>{% endif %}
+        <span class="fx-muted">{% if cev.action == 'Exported' %}copy downloaded by {{ cev.recorded_by_name }}{% else %}to {{ cev.to_name }}{% endif %}</span></span>
+        <span class="fx-mono fx-muted small">{{ cev.occurred_at|datetime }}</span></li>
+    {% endfor %}</ol>
+    {% else %}{{ ui.empty_state("No custody events " ~ period_label|lower) }}{% endif %}
+  </section>
+</div>
 
 <section aria-label="Charts" class="fx-chart-grid">
   {% for chart in [
@@ -68,8 +136,8 @@
     <div class="fx-card-b fx-chart" data-fx-chart="{{ chart.type }}"
          data-endpoint="{{ url_for('dashboard.chart_data', chart=chart.id) }}" aria-labelledby="chart-{{ chart.id }}-h">
       <div class="fx-chart-state" data-state="loading" aria-busy="true">
-        <span class="fx-skeleton" style="height:14px;width:60%"></span><span class="fx-skeleton" style="height:14px;width:90%"></span>
-        <span class="fx-skeleton" style="height:14px;width:75%"></span><span class="fx-muted small">Loading chart data…</span>
+        <span class="fx-skeleton fx-skel-60"></span><span class="fx-skeleton fx-skel-90"></span>
+        <span class="fx-skeleton fx-skel-75"></span><span class="fx-muted small">Loading chart data…</span>
       </div>
       <div class="fx-chart-state" data-state="empty" hidden>
         <p class="fw-semibold mb-1">Nothing to show yet</p>
@@ -117,14 +185,18 @@
 <details class="fx-card fx-card-b fx-metric-notes">
   <summary>How these figures are calculated</summary>
   <dl class="fx-dl mt-3">
-    <dt>Scope</dt><dd>{{ scope.label }}. Administrators, auditors and evidence custodians see the whole lab; investigators see the cases they are assigned to.</dd>
+    <dt>Scope</dt><dd>{{ scope.label }}. Administrators, auditors and evidence custodians see the whole lab; investigators see the cases they are assigned to. Every figure is one SQL query run when the page loads.</dd>
+    <dt>Current state</dt><dd>Figures at this moment; the period selector doesn't change them.</dd>
     <dt>Open cases</dt><dd>Status is Open, In Progress or On Hold (anything except Closed).</dd>
-    <dt>Closed recently</dt><dd>Closed within the last 30 days.</dd>
-    <dt>Evidence in storage</dt><dd>Current status is In Storage.</dd>
-    <dt>Under examination</dt><dd>Current status is Under Examination.</dd>
+    <dt>High-priority open</dt><dd>Open cases whose priority is Critical or High.</dd>
+    <dt>Awaiting examination</dt><dd>Evidence linked to at least one examination that is still Pending (not yet started).</dd>
+    <dt>Under examination</dt><dd>Evidence whose current custody status is Under Examination.</dd>
     <dt>Pending transfers</dt><dd>Checked Out or In Transit: out of storage and still to be returned or received.</dd>
-    <dt>Integrity</dt><dd>Latest check of each item's current reference hash. Pending means a hash is recorded but has never been checked; Not Verified means no hash is recorded. A matching hash shows the content was identical when compared; it does not prove authenticity on its own.</dd>
-    <dt>Needs attention</dt><dd>Examinations past their due date that are still Pending or In Progress; items whose latest check Failed; reports Under Review{% if show_requests %}; pending account requests{% endif %}.</dd>
+    <dt>Completed examinations</dt><dd>All examinations with status Completed.</dd>
+    <dt>Reports pending review</dt><dd>Reports with status Under Review, waiting for an administrator who isn't the author.</dd>
+    <dt>Integrity</dt><dd>Latest check of each item's current reference hash: Verified; Integrity mismatch (the latest check failed); Pending verification (hash recorded, never checked); Verification unavailable (no hash recorded). A matching hash shows the content was identical when compared; it doesn't prove authenticity on its own.</dd>
+    <dt>Activity in the period</dt><dd>Records created in the selected period: cases by registration time, evidence by registration time, custody entries by the time the handover happened, hash checks by check time, examinations by completion time.</dd>
+    <dt>Needs attention</dt><dd>Examinations past their due date that are still Pending or In Progress; items with an integrity mismatch; reports Under Review{% if show_requests %}; pending account requests{% endif %}.</dd>
   </dl>
 </details>
 {% endblock %}

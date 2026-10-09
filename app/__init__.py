@@ -4,6 +4,7 @@
 of a global `app = Flask(...)`) lets tests create isolated apps with
 different settings, and keeps setup in one readable place.
 """
+import os
 import logging
 
 from dotenv import load_dotenv
@@ -21,7 +22,7 @@ csrf = CSRFProtect()
 CONTENT_SECURITY_POLICY = (
     "default-src 'self'; "
     "script-src 'self'; "
-    "style-src 'self' 'unsafe-inline'; "
+    "style-src 'self'; "                     # no inline styles anywhere (Phase 2.0-1; a test enforces it)
     "img-src 'self' data:; "
     "font-src 'self'; "
     "connect-src 'self'; "
@@ -47,6 +48,10 @@ def create_app(config=None):
     if app.config.get("TRUST_CLOUDFLARE"):
         from .proxy import trust_cloudflare
         trust_cloudflare(app)
+
+    if not app.config.get("EVIDENCE_STORAGE_DIR"):
+        # Default: the Flask instance folder, which is never served to browsers.
+        app.config["EVIDENCE_STORAGE_DIR"] = os.path.join(app.instance_path, "evidence_store")
 
     csrf.init_app(app)
     db.init_app(app)
@@ -97,6 +102,13 @@ def _register_blueprints(app):
     app.register_blueprint(audit_bp)         # Phase 12
     app.register_blueprint(search_bp)        # Phase 13
     app.register_blueprint(analytics_bp)     # Phase 13
+    from .yara import bp as yara_bp
+    app.register_blueprint(yara_bp)          # FORGE-X 2.0 Phase 7
+    from .graph import bp as graph_bp
+    app.register_blueprint(graph_bp)         # FORGE-X 2.0 Phase 8
+    from .api import bp as api_bp, web_bp as api_web_bp
+    app.register_blueprint(api_bp)           # FORGE-X 2.0 Phase 10: /api/v1 (read-only)
+    app.register_blueprint(api_web_bp)       # API tokens and developer docs pages
 
 
 def _register_security_headers(app):

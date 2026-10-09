@@ -7,6 +7,10 @@
   {% if value %}<p class="fx-prose m-0">{{ value }}</p>{% else %}<p class="fx-muted m-0">Not recorded yet.</p>{% endif %}
 </div>
 {%- endmacro %}
+{% macro tab_link(key, label, count=None) -%}
+<a class="fx-tab" href="{{ url_for('examinations.detail', code=exam.examination_code, tab=key) }}" {% if tab == key %}aria-current="page"{% endif %}>
+  {{ label }}{% if count is not none %}<span class="fx-count">{{ count }}</span>{% endif %}</a>
+{%- endmacro %}
 {% block content %}
 <nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('examinations.list_examinations') }}">Examinations</a><span aria-hidden="true">/</span><span class="fx-mono" aria-current="page">{{ exam.examination_code }}</span></nav>
 <div class="fx-page-header">
@@ -17,54 +21,70 @@
       {% if exam.is_overdue %}<span class="fx-badge b-red">Overdue</span>{% endif %}
       <span class="fx-muted small">Case <a class="fx-mono" href="{{ url_for('cases.detail', reference=exam.case_reference) }}">{{ exam.case_reference }}</a>, examiner {{ exam.examiner_name }}</span></div>
   </div>
-  {% if can_work %}
   <div class="fx-page-actions">
-    <a class="fx-btn fx-btn-secondary" href="{{ url_for('examinations.record', code=exam.examination_code) }}">Edit record</a>
-    {% if exam.status == "Pending" %}
-    <form method="post" action="{{ url_for('examinations.start', code=exam.examination_code) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button class="fx-btn fx-btn-primary" type="submit">Start examination</button></form>
-    {% elif exam.status == "In Progress" %}
-    <form method="post" action="{{ url_for('examinations.complete', code=exam.examination_code) }}" data-fx-confirm="Complete {{ exam.examination_code }}? The record becomes read-only.">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="fx-btn fx-btn-primary" type="submit">Mark completed</button></form>
+    {% if can_work %}
+      <a class="fx-btn fx-btn-secondary" href="{{ url_for('examinations.record', code=exam.examination_code) }}">Edit record</a>
+      {% if exam.status == "Pending" %}
+      <form method="post" action="{{ url_for('examinations.start', code=exam.examination_code) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="fx-btn fx-btn-primary" type="submit">Start examination</button></form>
+      {% elif exam.status == "In Progress" %}
+      <form method="post" action="{{ url_for('examinations.submit', code=exam.examination_code) }}" data-fx-confirm="Submit {{ exam.examination_code }} for review? The record is frozen until a reviewer approves or returns it.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="fx-btn fx-btn-primary" type="submit">Submit for review</button></form>
+      {% endif %}
     {% endif %}
   </div>
-  {% endif %}
 </div>
-{% if exam.status == "Cancelled" %}<div class="fx-alert b-slate" role="status"><i class="bi bi-x-circle" aria-hidden="true"></i><div><strong>Cancelled.</strong><p>{{ exam.cancel_reason }}</p></div></div>{% endif %}
 
+<ol class="fx-stepper" aria-label="Examination status">
+  {% set steps = ["Pending", "In Progress", "Under Review", "Completed"] %}
+  {% set here = steps.index(exam.status) if exam.status in steps else -1 %}
+  {% for st in steps %}
+    {% set done = here > loop.index0 %}
+    <li class="{{ 'is-done' if done }}{{ ' is-current' if st == exam.status }}" {% if st == exam.status %}aria-current="step"{% endif %}>
+      {% if done %}<i class="bi bi-check-lg" aria-hidden="true"></i>{% else %}<span class="fx-step-dot" aria-hidden="true"></span>{% endif %}{{ st }}</li>
+    {% if not loop.last %}<li class="fx-stepper-line {{ 'is-done' if done }}" aria-hidden="true"></li>{% endif %}
+  {% endfor %}
+  {% if exam.status == "Completed" %}<li class="fx-muted small ms-2">{% if exam.reviewer_name %}approved by {{ exam.reviewer_name }}, {{ exam.reviewed_at|datetime }}{% else %}completed before independent review was introduced{% endif %}</li>{% endif %}
+</ol>
+{% if exam.status == "Cancelled" %}<div class="fx-alert b-slate" role="status"><i class="bi bi-x-circle" aria-hidden="true"></i><div><strong>Cancelled.</strong><p>{{ exam.cancel_reason }}</p></div></div>{% endif %}
+{% if exam.review_note and exam.status == "In Progress" %}<div class="fx-alert b-amber" role="status"><i class="bi bi-arrow-return-left" aria-hidden="true"></i><div><strong>Returned for revision.</strong><p>{{ exam.review_note }}</p></div></div>{% endif %}
+{% if exam.status == "Under Review" and not can_review %}<p class="fx-muted small m-0">Waiting for review by an administrator or the case's lead investigator who isn't the examiner.</p>{% endif %}
+
+{% if can_review %}
+<section class="fx-card fx-review" aria-labelledby="review-h">
+  <div class="fx-card-h"><h2 id="review-h">Review this examination</h2><span class="fx-muted small">Submitted {{ exam.submitted_at|datetime }} by {{ exam.examiner_name }}</span></div>
+  <form method="post" class="fx-card-b d-flex flex-column gap-3" novalidate>
+    {{ review_form.hidden_tag() }}
+    {{ ui.field(review_form.note, help="Required when returning: what should the examiner revise? Optional when approving.") }}
+    <div class="d-flex flex-wrap gap-2">
+      <button class="fx-btn fx-btn-primary" type="submit" formaction="{{ url_for('examinations.approve', code=exam.examination_code) }}">Approve and complete</button>
+      <button class="fx-btn fx-btn-ghost" type="submit" formaction="{{ url_for('examinations.return_for_revision', code=exam.examination_code) }}">Return for revision</button>
+    </div>
+    <p class="fx-help m-0">Approving makes the record final: MySQL refuses any later change to a completed examination.</p>
+  </form>
+</section>
+{% endif %}
+
+<nav class="fx-tabs" aria-label="Examination sections">
+  {{ tab_link("overview", "Overview") }}{{ tab_link("evidence", "Evidence", evidence|length) }}{{ tab_link("methodology", "Methodology") }}
+  {{ tab_link("findings", "Findings") }}{{ tab_link("artifacts", "Artifacts", artifacts|length) }}{{ tab_link("history", "History") }}{{ tab_link("report", "Report") }}
+</nav>
+
+{% if tab == "overview" %}
 <div class="fx-detail-grid">
+  <section class="fx-card"><div class="fx-card-h"><h2>Details</h2></div><div class="fx-card-b"><dl class="fx-dl">
+    <dt>Type</dt><dd>{{ exam.type_name }}</dd><dt>Examiner</dt><dd>{{ exam.examiner_name }}</dd>
+    <dt>Due</dt><dd>{{ exam.due_date|date if exam.due_date else "—" }}</dd>
+    <dt>Started</dt><dd>{{ exam.started_at|datetime if exam.started_at else "Not started" }}</dd>
+    <dt>Submitted for review</dt><dd>{{ exam.submitted_at|datetime if exam.submitted_at else "—" }}</dd>
+    <dt>Completed</dt><dd>{{ exam.completed_at|datetime if exam.completed_at else "—" }}</dd>
+    <dt>Reviewer</dt><dd>{{ exam.reviewer_name or "—" }}{% if exam.review_note and exam.status == "Completed" %}: {{ exam.review_note }}{% endif %}</dd>
+    <dt>Created</dt><dd>{{ exam.created_at|datetime }}</dd></dl></div></section>
   <div class="d-flex flex-column gap-3 min-w-0">
-    <section class="fx-card"><div class="fx-card-h"><h2>Examination record</h2><span class="fx-muted small">FORGE-X records the work; it never runs tools on evidence.</span></div>
-      <div class="fx-card-b d-flex flex-column gap-3">
-        {{ block("Tools and methods", exam.tools_methods) }}
-        {{ block("Observations", exam.observations, "fact") }}
-        {{ block("Findings", exam.findings, "interp") }}
-        {{ block("Limitations", exam.limitations) }}
-      </div></section>
-    <section class="fx-card"><div class="fx-card-h"><h2>Evidence examined</h2></div>
-      {% if evidence %}<div class="fx-table-wrap"><table class="fx-table">
-        <thead><tr><th>Evidence ID</th><th>Type</th><th>Description</th><th>Status</th><th>Integrity</th></tr></thead>
-        <tbody>{% for e in evidence %}<tr><td><a class="fx-mono" href="{{ url_for('evidence.detail', code=e.evidence_code) }}">{{ e.evidence_code }}</a></td>
-          <td>{{ e.evidence_type }}</td><td>{{ e.description }}</td><td>{{ ui.badge(e.current_status) }}</td><td>{{ ui.badge(e.integrity_status) }}</td></tr>{% endfor %}</tbody></table></div>
-      {% else %}{{ ui.empty_state("No evidence linked yet") }}{% endif %}
-      {% if can_work and link_form.evidence_ids.choices %}
-      <form method="post" action="{{ url_for('examinations.link_evidence', code=exam.examination_code) }}" class="fx-card-b border-top d-flex gap-2 align-items-end">
-        {{ link_form.hidden_tag() }}
-        <div class="flex-grow-1">{{ link_form.evidence_ids.label(class_="fx-label") }}{{ link_form.evidence_ids(class_="fx-input fx-multi", size=3) }}</div>
-        <button class="fx-btn fx-btn-secondary" type="submit">Link</button></form>
-      {% endif %}
-    </section>
-  </div>
-  <div class="d-flex flex-column gap-3 min-w-0">
-    <section class="fx-card"><div class="fx-card-h"><h2>Details</h2></div><div class="fx-card-b"><dl class="fx-dl fx-dl-tight">
-      <dt>Type</dt><dd>{{ exam.type_name }}</dd><dt>Examiner</dt><dd>{{ exam.examiner_name }}</dd>
-      <dt>Due</dt><dd>{{ exam.due_date|date if exam.due_date else "—" }}</dd>
-      <dt>Started</dt><dd>{{ exam.started_at|datetime if exam.started_at else "Not started" }}</dd>
-      <dt>Completed</dt><dd>{{ exam.completed_at|datetime if exam.completed_at else "—" }}</dd>
-      <dt>Created</dt><dd>{{ exam.created_at|datetime }}</dd></dl></div></section>
-    <section class="fx-card"><div class="fx-card-h"><h2>Cited in reports</h2></div>
-      <ul class="fx-role-list">{% for r in reports %}<li><a class="fx-mono" href="{{ url_for('reports.detail', code=r.report_code) }}">{{ r.report_code }}</a><span>{{ ui.badge(r.status) }}</span></li>
-        {% else %}<li class="fx-muted">Not cited in any report yet</li>{% endfor %}</ul></section>
+    <section class="fx-card"><div class="fx-card-h"><h2>Progress</h2></div><div class="fx-card-b"><dl class="fx-dl fx-dl-tight">
+      <dt>Evidence</dt><dd>{{ evidence|length }} item{{ "s" if evidence|length != 1 }}{% set bad = evidence|selectattr("integrity_status", "equalto", "Failed")|list %}{% if bad %} <span class="fx-badge b-red">{{ bad|length }} integrity mismatch</span>{% endif %}</dd>
+      <dt>Artifacts</dt><dd>{{ artifacts|length }}</dd>
+      <dt>Record</dt><dd>{{ "Tools and findings recorded" if exam.tools_methods and exam.findings else "Tools or findings still missing" }}</dd></dl></div></section>
     {% if can_work %}
     <section class="fx-card"><div class="fx-card-h"><h2>Cancel examination</h2></div>
       <form method="post" action="{{ url_for('examinations.cancel', code=exam.examination_code) }}" class="fx-card-b d-flex flex-column gap-2" data-fx-confirm="Cancel {{ exam.examination_code }}? This can't be undone.">
@@ -73,4 +93,83 @@
     {% endif %}
   </div>
 </div>
+
+{% elif tab == "evidence" %}
+<section class="fx-card"><div class="fx-card-h"><h2>Evidence examined</h2></div>
+  {% if evidence %}<div class="fx-table-wrap"><table class="fx-table">
+    <thead><tr><th scope="col">Evidence ID</th><th scope="col">Type</th><th scope="col">Description</th><th scope="col">Status</th><th scope="col">Integrity</th><th scope="col">Reference SHA-256</th></tr></thead>
+    <tbody>{% for e in evidence %}<tr><td><a class="fx-mono" href="{{ url_for('evidence.detail', code=e.evidence_code) }}">{{ e.evidence_code }}</a></td>
+      <td>{{ e.evidence_type }}</td><td>{{ e.description }}</td><td>{{ ui.badge(e.current_status) }}</td><td>{{ ui.integrity(e.integrity_status) }}</td>
+      <td class="fx-mono small">{% if e.current_hash_value %}<abbr title="{{ e.current_hash_value }}">{{ e.current_hash_value[:16] }}…</abbr>{% else %}—{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+  {% else %}{{ ui.empty_state("No evidence linked yet") }}{% endif %}
+  {% if can_work and link_form.evidence_ids.choices %}
+  <form method="post" action="{{ url_for('examinations.link_evidence', code=exam.examination_code) }}" class="fx-card-b border-top d-flex gap-2 align-items-end">
+    {{ link_form.hidden_tag() }}
+    <div class="flex-grow-1">{{ link_form.evidence_ids.label(class_="fx-label") }}{{ link_form.evidence_ids(class_="fx-input fx-multi", size=3) }}</div>
+    <button class="fx-btn fx-btn-secondary" type="submit">Link</button></form>
+  {% endif %}
+</section>
+
+{% elif tab == "methodology" %}
+<section class="fx-card"><div class="fx-card-h"><h2>Methodology</h2><span class="fx-muted small">How the evidence was examined. FORGE-X records the work; it never runs tools on evidence.</span></div>
+  <div class="fx-card-b d-flex flex-column gap-3">{{ block("Tools and methods", exam.tools_methods) }}{{ block("Limitations", exam.limitations) }}</div></section>
+
+{% elif tab == "findings" %}
+<section class="fx-card"><div class="fx-card-h"><h2>Findings</h2></div>
+  <div class="fx-card-b d-flex flex-column gap-3">
+    {{ block("Observations", exam.observations, "fact") }}{{ block("Findings", exam.findings, "interp") }}{{ block("Conclusion", exam.conclusion, "interp") }}
+  </div></section>
+
+{% elif tab == "artifacts" %}
+<section class="fx-card"><div class="fx-card-h"><h2>Artifacts</h2><span class="fx-muted small">Append-only. A correction is a new artifact linked to the old one.</span></div>
+  {% if artifacts %}<div class="fx-table-wrap"><table class="fx-table">
+    <thead><tr><th scope="col">#</th><th scope="col">Type</th><th scope="col">Description</th><th scope="col">Location</th><th scope="col">Evidence</th><th scope="col">SHA-256</th><th scope="col">Recorded</th></tr></thead>
+    <tbody>{% for a in artifacts %}<tr id="artifact-{{ a.artifact_id }}">
+      <td class="fx-mono">#{{ a.artifact_id }}</td><td>{{ a.artifact_type }}</td>
+      <td>{{ a.description }}
+        {% if a.corrects_artifact_id %}<br><a class="fx-badge b-amber" href="#artifact-{{ a.corrects_artifact_id }}">Correction of #{{ a.corrects_artifact_id }}</a>{% endif %}
+        {% for c in a.corrected_by %}<br><a class="fx-badge b-slate" href="#artifact-{{ c }}">Corrected by #{{ c }}</a>{% endfor %}
+        {% if artifact_form is defined %}<br><a class="small" href="{{ url_for('examinations.detail', code=exam.examination_code, tab='artifacts', correct=a.artifact_id) }}#add-artifact">Record a correction</a>{% endif %}</td>
+      <td class="fx-mono small">{{ a.location or "—" }}</td><td class="fx-mono small">{{ a.evidence_code or "—" }}</td>
+      <td class="fx-mono small">{% if a.sha256 %}<abbr title="{{ a.sha256 }}">{{ a.sha256[:12] }}…</abbr>{% else %}—{% endif %}</td>
+      <td class="small text-nowrap">{{ a.recorded_at|datetime }}<br><span class="fx-muted">{{ a.recorded_by_name }}</span></td></tr>{% endfor %}</tbody></table></div>
+  {% else %}{{ ui.empty_state("No artifacts recorded", "Files, registry entries, log lines or indicators found during the examination.") }}{% endif %}
+</section>
+{% if artifact_form is defined %}
+<section class="fx-card" id="add-artifact" aria-labelledby="add-artifact-h">
+  <div class="fx-card-h"><h2 id="add-artifact-h">{{ "Record a correction to artifact #" ~ artifact_form.corrects_artifact_id.data if artifact_form.corrects_artifact_id.data else "Record an artifact" }}</h2></div>
+  <form method="post" action="{{ url_for('examinations.add_artifact', code=exam.examination_code) }}" novalidate class="fx-card-b d-flex flex-column gap-3 fx-narrow" data-fx-busy="Saving…">
+    {{ artifact_form.hidden_tag() }}
+    <div class="fx-form-grid">{{ ui.field(artifact_form.artifact_type) }}{{ ui.field(artifact_form.evidence_id) }}</div>
+    {{ ui.field(artifact_form.description, help="What it is, e.g. \"Scheduled task launching an unsigned program\".") }}
+    {{ ui.field(artifact_form.location, help="Where it was found: a path, registry key, log line or offset.") }}
+    {{ ui.field(artifact_form.sha256, help="Optional, if you hashed the artifact itself.", extra_class="fx-mono") }}
+    <div class="d-flex gap-2"><button class="fx-btn fx-btn-primary" type="submit">Save artifact</button>
+      {% if artifact_form.corrects_artifact_id.data %}<a class="fx-btn fx-btn-ghost" href="{{ url_for('examinations.detail', code=exam.examination_code, tab='artifacts') }}">Cancel correction</a>{% endif %}</div>
+  </form>
+</section>
+{% endif %}
+
+{% elif tab == "history" %}
+<section class="fx-card"><div class="fx-card-h"><h2>History</h2><span class="fx-muted small">Every recorded action on this examination, newest first.</span></div>
+  {% if history %}<div class="fx-table-wrap"><table class="fx-table">
+    <thead><tr><th scope="col">Time</th><th scope="col">Who</th><th scope="col">Action</th><th scope="col">Outcome</th><th scope="col">Details</th></tr></thead>
+    <tbody>{% for h in history %}<tr><td class="fx-mono text-nowrap">{{ h.created_at|datetime }}</td><td>{{ h.user_name or "—" }}</td>
+      <td class="fx-mono">{{ h.action }}</td><td>{{ ui.badge(h.outcome) }}</td><td class="fx-muted">{{ h.details or "" }}</td></tr>{% endfor %}</tbody></table></div>
+  {% else %}{{ ui.empty_state("No history yet") }}{% endif %}
+</section>
+
+{% elif tab == "report" %}
+<div class="fx-detail-grid">
+  <section class="fx-card"><div class="fx-card-h"><h2>Examination report</h2></div>
+    <div class="fx-card-b d-flex flex-column gap-3">
+      <p class="m-0">A PDF built from the database: examination and case details, evidence with its reference hashes, methodology, observations, findings, conclusion, artifacts and custody references.{% if exam.status != "Completed" %} Until the examination is approved it is watermarked <strong>NOT REVIEWED</strong>.{% endif %}</p>
+      <div><a class="fx-btn fx-btn-secondary" href="{{ url_for('examinations.pdf', code=exam.examination_code) }}"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i>Download examination PDF</a></div>
+      <p class="fx-help m-0">Each download is recorded in the audit log.</p>
+    </div></section>
+  <section class="fx-card"><div class="fx-card-h"><h2>Cited in case reports</h2></div>
+    <ul class="fx-role-list">{% for r in reports %}<li><a class="fx-mono" href="{{ url_for('reports.detail', code=r.report_code) }}">{{ r.report_code }}</a><span>{{ ui.badge(r.status) }}</span></li>
+      {% else %}<li class="fx-muted">Not cited in any report yet</li>{% endfor %}</ul></section>
+</div>
+{% endif %}
 {% endblock %}

@@ -1,6 +1,7 @@
 """Case management business logic. Routes call these functions; all data is
 read from and written to MySQL. Every value from the user is passed as a
 query parameter."""
+from datetime import date
 from dataclasses import dataclass
 
 from .. import audit
@@ -14,12 +15,55 @@ EDITABLE_STATUSES = ("Open", "In Progress", "On Hold")      # Closed only throug
 PRIORITIES = ("Low", "Medium", "High", "Critical")
 
 # Sort options -> fixed ORDER BY clauses (never built from user input)
-SORTS = {
-    "newest":    ("Newest first", "c.created_at DESC, c.case_id DESC"),
-    "oldest":    ("Oldest first", "c.created_at ASC, c.case_id ASC"),
-    "priority":  ("Highest priority", "FIELD(c.priority, 'Critical', 'High', 'Medium', 'Low'), c.created_at DESC"),
-    "reference": ("Reference", "c.case_reference ASC"),
+# The latest thing that happened on a case: its own edits, custody of its
+# evidence, notes, examinations or reports. Each part falls back to the case's
+# own updated_at, because GREATEST() returns NULL if any argument is NULL.
+LAST_ACTIVITY_SQL = """GREATEST(
+    c.updated_at,
+    COALESCE((SELECT MAX(coc.occurred_at) FROM chain_of_custody coc JOIN evidence e ON e.evidence_id = coc.evidence_id
+               WHERE e.case_id = c.case_id), c.updated_at),
+    COALESCE((SELECT MAX(n.created_at) FROM case_notes n WHERE n.case_id = c.case_id), c.updated_at),
+    COALESCE((SELECT MAX(x.updated_at) FROM examinations x WHERE x.case_id = c.case_id), c.updated_at),
+    COALESCE((SELECT MAX(r.updated_at) FROM forensic_reports r WHERE r.case_id = c.case_id), c.updated_at))"""
+
+# Column sorting: ?sort=<column> ascending, ?sort=-<column> descending. Only
+# these fixed SQL expressions can ever reach ORDER BY (the key is validated).
+SORT_COLUMNS = {
+    "reference":  ("Reference", "c.case_reference"),
+    "title":      ("Title", "c.title"),
+    "type":       ("Type", "ct.type_name"),
+    "priority":   ("Priority", "FIELD(c.priority, 'Critical', 'High', 'Medium', 'Low')"),
+    "status":     ("Status", "FIELD(c.status, 'Open', 'In Progress', 'On Hold', 'Closed')"),
+    "lead":       ("Lead investigator", "lu.full_name"),
+    "evidence":   ("Evidence", "evidence_count"),
+    "registered": ("Registered", "c.created_at"),
+    "due":        ("Due date", "c.due_date IS NULL, c.due_date"),
+    "activity":   ("Last activity", "last_activity"),
 }
+SORTS = {}
+for _key, (_label, _expr) in SORT_COLUMNS.items():
+    SORTS[_key] = (f"{_label} (ascending)", f"{_expr} ASC, c.case_id DESC")
+    SORTS["-" + _key] = (f"{_label} (descending)", f"{_expr} DESC, c.case_id DESC")
+# Cases without a due date always come last, whichever way due dates are sorted.
+SORTS["due"] = ("Due date (soonest first)", "c.due_date IS NULL, c.due_date ASC, c.case_id DESC")
+SORTS["-due"] = ("Due date (latest first)", "c.due_date IS NULL, c.due_date DESC, c.case_id DESC")
+# The older names stay valid, so existing links keep working.
+SORTS["newest"] = ("Newest first", "c.created_at DESC, c.case_id DESC")
+SORTS["oldest"] = ("Oldest first", "c.created_at ASC, c.case_id ASC")
+SORTS["priority"] = ("Highest priority", "FIELD(c.priority, 'Critical', 'High', 'Medium', 'Low'), c.created_at DESC")
+SORTS["reference"] = ("Reference", "c.case_reference ASC")
+SORT_MENU = ("newest", "oldest", "priority", "reference")      # the choices shown in the dropdown
+
+# Group filters used by the dashboard's links.
+STATUS_GROUPS = {"active": ("Active (not closed)", "c.status <> 'Closed'")}
+PRIORITY_GROUPS = {"urgent": ("High or critical", "c.priority IN ('Critical', 'High')")}
+
+
+def _parse_date(value):
+    try:
+        return date.fromisoformat(value) if value else None
+    except ValueError:
+        return None
 
 
 class CaseActionError(Exception):
@@ -35,6 +79,10 @@ class CaseFilters:
     status: str = ""
     priority: str = ""
     case_type_id: int = None
+    investigator_id: int = None
+    date_from: date = None
+    date_to: date = None
+    overdue: bool = False
     sort: str = "newest"
 
     @classmethod
@@ -43,21 +91,31 @@ class CaseFilters:
         type_raw = args.get("type", "")
         return cls(
             q=(args.get("q") or "").strip()[:100],
-            status=args.get("status") if args.get("status") in CASE_STATUSES else "",
-            priority=args.get("priority") if args.get("priority") in PRIORITIES else "",
+            status=args.get("status") if args.get("status") in CASE_STATUSES or args.get("status") in STATUS_GROUPS
+            else "",
+            priority=args.get("priority") if args.get("priority") in PRIORITIES or args.get("priority") in PRIORITY_GROUPS
+            else "",
             case_type_id=int(type_raw) if type_raw.isdigit() else None,
+            investigator_id=int(args.get("investigator")) if (args.get("investigator") or "").isdigit() else None,
+            date_from=_parse_date(args.get("from")), date_to=_parse_date(args.get("to")),
+            overdue=args.get("overdue") == "1",
             sort=args.get("sort") if args.get("sort") in SORTS else "newest",
         )
 
     def as_args(self):
         """The active filters as URL arguments (used by the pager)."""
         args = {"q": self.q, "status": self.status, "priority": self.priority,
-                "type": self.case_type_id or "", "sort": self.sort if self.sort != "newest" else ""}
+                "type": self.case_type_id or "", "investigator": self.investigator_id or "",
+                "from": self.date_from.isoformat() if self.date_from else "",
+                "to": self.date_to.isoformat() if self.date_to else "",
+                "overdue": "1" if self.overdue else "",
+                "sort": self.sort if self.sort != "newest" else ""}
         return {k: v for k, v in args.items() if v}
 
     @property
     def active(self):
-        return bool(self.q or self.status or self.priority or self.case_type_id)
+        return bool(self.q or self.status or self.priority or self.case_type_id or self.investigator_id
+                    or self.date_from or self.date_to or self.overdue)
 
 
 def like_pattern(text):
@@ -71,15 +129,30 @@ def list_cases(scope, filters, page, per_page):
     if filters.q:
         where.append("(c.case_reference LIKE %s ESCAPE '!' OR c.title LIKE %s ESCAPE '!')")
         params += [like_pattern(filters.q)] * 2
-    if filters.status:
+    if filters.status in STATUS_GROUPS:
+        where.append(STATUS_GROUPS[filters.status][1])
+    elif filters.status:
         where.append("c.status = %s")
         params.append(filters.status)
-    if filters.priority:
+    if filters.priority in PRIORITY_GROUPS:
+        where.append(PRIORITY_GROUPS[filters.priority][1])
+    elif filters.priority:
         where.append("c.priority = %s")
         params.append(filters.priority)
     if filters.case_type_id:
         where.append("c.case_type_id = %s")
         params.append(filters.case_type_id)
+    if filters.investigator_id:
+        where.append("EXISTS (SELECT 1 FROM case_investigators fi WHERE fi.case_id = c.case_id AND fi.user_id = %s)")
+        params.append(filters.investigator_id)
+    if filters.date_from:
+        where.append("c.created_at >= %s")
+        params.append(filters.date_from)
+    if filters.date_to:
+        where.append("c.created_at < %s + INTERVAL 1 DAY")
+        params.append(filters.date_to)
+    if filters.overdue:
+        where.append("c.status <> 'Closed' AND c.due_date < CURDATE()")
     condition = " AND ".join(where) + scope.case_filter
     all_params = tuple(params) + scope.params
 
@@ -89,9 +162,11 @@ def list_cases(scope, filters, page, per_page):
     order_by = SORTS[filters.sort][1]
     rows = query_all(
         f"""
-        SELECT c.case_id, c.case_reference, c.title, ct.type_name, c.priority, c.status, c.created_at,
+        SELECT c.case_id, c.case_reference, c.title, ct.type_name, c.priority, c.status, c.created_at, c.due_date,
+               (c.status <> 'Closed' AND c.due_date < CURDATE()) AS is_overdue,
                lu.full_name AS lead_name,
-               (SELECT COUNT(*) FROM evidence e WHERE e.case_id = c.case_id) AS evidence_count
+               (SELECT COUNT(*) FROM evidence e WHERE e.case_id = c.case_id) AS evidence_count,
+               {LAST_ACTIVITY_SQL} AS last_activity
           FROM cases c
           JOIN case_types ct              ON ct.case_type_id = c.case_type_id
           LEFT JOIN case_investigators ci ON ci.case_id = c.case_id AND ci.is_lead = TRUE
@@ -136,7 +211,8 @@ def active_investigators():
 # ---------------------------------------------------------------------------
 _CASE_SELECT = """
     SELECT c.case_id, c.case_reference, c.title, c.description, c.case_type_id, ct.type_name,
-           c.priority, c.status, c.created_at, c.updated_at, c.closed_at, c.closure_summary,
+           c.priority, c.status, c.due_date, c.created_at, c.updated_at, c.closed_at, c.closure_summary,
+           (c.status <> 'Closed' AND c.due_date < CURDATE()) AS is_overdue,
            cu.full_name AS created_by_name,
            ci.user_id   AS lead_user_id,
            lu.full_name AS lead_name
@@ -217,9 +293,12 @@ def tab_counts(case_id):
         SELECT (SELECT COUNT(*) FROM evidence           WHERE case_id = %s) AS evidence,
                (SELECT COUNT(*) FROM case_investigators WHERE case_id = %s) AS investigators,
                (SELECT COUNT(*) FROM examinations       WHERE case_id = %s) AS examinations,
-               (SELECT COUNT(*) FROM forensic_reports   WHERE case_id = %s) AS reports
+               (SELECT COUNT(*) FROM forensic_reports   WHERE case_id = %s) AS reports,
+               (SELECT COUNT(*) FROM case_notes         WHERE case_id = %s) AS notes,
+               (SELECT COUNT(*) FROM chain_of_custody coc JOIN evidence e ON e.evidence_id = coc.evidence_id
+                 WHERE e.case_id = %s)                                         AS custody
         """,
-        (case_id,) * 4,
+        (case_id,) * 6,
     )
     return {k: int(v) for k, v in row.items()}
 
@@ -229,7 +308,7 @@ def closure_blockers(case_id):
     return {
         "examinations": query_all(
             "SELECT examination_code, status FROM examinations "
-            "WHERE case_id = %s AND status IN ('Pending', 'In Progress') ORDER BY examination_code",
+            "WHERE case_id = %s AND status IN ('Pending', 'In Progress', 'Under Review') ORDER BY examination_code",
             (case_id,)),
         "evidence": query_all(
             "SELECT evidence_code, current_status FROM evidence "
@@ -242,22 +321,34 @@ def closure_blockers(case_id):
 # ---------------------------------------------------------------------------
 # Changes
 # ---------------------------------------------------------------------------
-def create_case(title, description, case_type_id, priority, lead_user_id, created_by):
+def create_case(title, description, case_type_id, priority, lead_user_id, created_by, due_date=None):
     """sp_register_case: reference number, case row, lead assignment and
-    audit record in one transaction. Returns the new case reference."""
+    audit record in one transaction. Returns the new case reference.
+
+    An optional due date is set right afterwards, in a second transaction
+    (sp_register_case predates due dates and its signature is kept)."""
     try:
         result = call_proc("sp_register_case",
                            (title, description, case_type_id, priority, lead_user_id, created_by, None, None))
     except BusinessRuleError as err:
         raise CaseActionError(err.user_message) from err
-    return result[7]          # OUT p_case_reference
+    reference = result[7]          # OUT p_case_reference
+    if due_date:
+        try:
+            with transaction() as cur:
+                cur.execute("UPDATE cases SET due_date = %s WHERE case_reference = %s", (due_date, reference))
+                audit.record("case.update", "Case", reference, cursor=cur, details=f"Due date set to {due_date}")
+        except DatabaseError as err:
+            raise CaseActionError(f"Case {reference} was registered, but its due date couldn't be saved. "
+                                  "Set it with Edit details.") from err
+    return reference
 
 
 def _lock_case(cur, case_id):
     cur.execute(
         """
         SELECT c.case_id, c.case_reference, c.title, c.description, c.case_type_id, c.priority, c.status,
-               c.updated_at, ci.user_id AS lead_user_id
+               c.due_date, c.created_at, c.updated_at, ci.user_id AS lead_user_id
           FROM cases c
           LEFT JOIN case_investigators ci ON ci.case_id = c.case_id AND ci.is_lead = TRUE
          WHERE c.case_id = %s
@@ -276,7 +367,7 @@ def version_of(case):
     return case["updated_at"].isoformat() if case.get("updated_at") else ""
 
 
-def update_case(case_id, user, title, description, case_type_id, priority, expected_version):
+def update_case(case_id, user, title, description, case_type_id, priority, expected_version, due_date=None):
     """Edit the case details. Refuses if someone else changed the case after
     the form was opened (optimistic concurrency check)."""
     with transaction() as cur:
@@ -300,12 +391,17 @@ def update_case(case_id, user, title, description, case_type_id, priority, expec
             changes.append(f"type (now {new_type['type_name']})")
         if priority != case["priority"]:
             changes.append(f"priority ({case['priority']} to {priority})")
+        if due_date != case["due_date"]:
+            if due_date and due_date < case["created_at"].date():
+                raise CaseActionError("The due date can't be before the case was registered.")
+            changes.append(f"due date ({case['due_date'] or 'none'} to {due_date or 'none'})")
         if not changes:
             return False
 
         cur.execute(
-            "UPDATE cases SET title = %s, description = %s, case_type_id = %s, priority = %s WHERE case_id = %s",
-            (title, description, case_type_id, priority, case_id),
+            "UPDATE cases SET title = %s, description = %s, case_type_id = %s, priority = %s, due_date = %s "
+            "WHERE case_id = %s",
+            (title, description, case_type_id, priority, due_date, case_id),
         )
         audit.record("case.update", "Case", case["case_reference"], cursor=cur,
                      details="Changed: " + ", ".join(changes))
@@ -355,7 +451,8 @@ _BLOCKERS_SQL = (
     "SELECT c.status, "
     "(SELECT COUNT(*) FROM evidence e WHERE e.case_id = c.case_id) AS evidence, "
     "(SELECT COUNT(*) FROM examinations x WHERE x.case_id = c.case_id) AS examinations, "
-    "(SELECT COUNT(*) FROM forensic_reports r WHERE r.case_id = c.case_id) AS reports "
+    "(SELECT COUNT(*) FROM forensic_reports r WHERE r.case_id = c.case_id) AS reports, "
+    "(SELECT COUNT(*) FROM case_notes n WHERE n.case_id = c.case_id) AS notes "
     "FROM cases c WHERE c.case_id = %s")
 
 
@@ -363,8 +460,8 @@ def _blockers(row):
     if row is None:
         return ["The case doesn't exist."]
     names = {"evidence": ("evidence item", "evidence items"), "examinations": ("examination", "examinations"),
-             "reports": ("report", "reports")}
-    parts = [f"{int(row[k])} {names[k][int(row[k]) != 1]}" for k in names if int(row[k])]
+             "reports": ("report", "reports"), "notes": ("note", "notes")}
+    parts = [f"{int(row[k])} {names[k][int(row[k]) != 1]}" for k in names if int(row.get(k) or 0)]
     reasons = [f"It has {', '.join(parts)}."] if parts else []
     if row["status"] == "Closed":
         reasons.append("It is closed, and closure is part of the record.")
@@ -410,3 +507,77 @@ def delete_case(case_id, user, reason, typed_reference):
                                   "run database/migrations/003_allow_case_delete.sql as root.") from err
         raise
     return case["case_reference"]
+
+
+
+# ---------------------------------------------------------------------------
+# FORGE-X 2.0 Phase 2: the case's chain of custody and its notes
+# ---------------------------------------------------------------------------
+NOTE_MAX = 4000
+
+
+def case_custody(case_id, limit=200):
+    """Custody entries for every evidence item of the case, newest first."""
+    return query_all(
+        """
+        SELECT coc.custody_id, coc.occurred_at, coc.action, coc.evidence_condition, coc.reason,
+               coc.corrects_custody_id, e.evidence_code,
+               fu.full_name AS from_name, tu.full_name AS to_name, ru.full_name AS recorded_by_name,
+               COALESCE(sl.location_name, coc.location_note) AS location
+          FROM chain_of_custody coc
+          JOIN evidence e                ON e.evidence_id = coc.evidence_id
+          LEFT JOIN users fu             ON fu.user_id = coc.from_custodian_id
+          JOIN users tu                  ON tu.user_id = coc.to_custodian_id
+          JOIN users ru                  ON ru.user_id = coc.recorded_by
+          LEFT JOIN storage_locations sl ON sl.location_id = coc.location_id
+         WHERE e.case_id = %s
+         ORDER BY coc.occurred_at DESC, coc.custody_id DESC
+         LIMIT %s
+        """,
+        (case_id, limit),
+    )
+
+
+def case_notes(case_id):
+    """Notes oldest first, each marked with the notes that correct it."""
+    rows = query_all(
+        "SELECT n.note_id, n.note_text, n.reference, n.corrects_note_id, n.created_at, u.full_name AS author_name "
+        "FROM case_notes n JOIN users u ON u.user_id = n.author_id WHERE n.case_id = %s "
+        "ORDER BY n.created_at, n.note_id", (case_id,))
+    corrected_by = {}
+    for row in rows:
+        if row["corrects_note_id"]:
+            corrected_by.setdefault(row["corrects_note_id"], []).append(row["note_id"])
+    for row in rows:
+        row["corrected_by"] = corrected_by.get(row["note_id"], [])
+    return rows
+
+
+def add_note(case, user, text, reference=None, corrects_note_id=None):
+    """Append a note (never edited or deleted). Triggers re-check that the case
+    is open and that a correction refers to a note on the same case."""
+    from ..access import can_add_case_note
+    text = (text or "").strip()
+    if len(text) < 2 or len(text) > NOTE_MAX:
+        raise CaseActionError(f"A note needs 2 to {NOTE_MAX} characters.")
+    assigned = bool(query_value("SELECT COUNT(*) FROM case_investigators WHERE case_id = %s AND user_id = %s",
+                                (case["case_id"], user["user_id"])))
+    if not can_add_case_note(user, case, assigned):
+        raise CaseActionError("Only administrators, custodians and the case's investigators can add notes to an open case.")
+    try:
+        with transaction() as cur:
+            cur.execute("INSERT INTO case_notes (case_id, note_text, reference, corrects_note_id, author_id) "
+                        "VALUES (%s, %s, %s, %s, %s)",
+                        (case["case_id"], text, (reference or "").strip() or None, corrects_note_id, user["user_id"]))
+            note_id = cur.lastrowid
+            audit.record("case.note", "Case", case["case_reference"], cursor=cur,
+                         details=(f"Note #{note_id}" + (f" corrects note #{corrects_note_id}" if corrects_note_id else ""))[:500])
+    except BusinessRuleError as err:          # the trigger's message (closed case, wrong case)
+        raise CaseActionError(err.user_message) from err
+    return note_id
+
+
+def active_investigators_for_filter():
+    return query_all(
+        "SELECT DISTINCT u.user_id, u.full_name FROM users u JOIN user_roles ur ON ur.user_id = u.user_id "
+        "JOIN roles r ON r.role_id = ur.role_id WHERE r.role_name = 'Investigator' ORDER BY u.full_name")

@@ -1,0 +1,21 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}YARA rules{% endblock %}
+{% block content %}
+{% call ui.page_header("YARA rules", "Rules are compiled and run only in an isolated worker process, on stored copies of evidence. Every version is kept.") %}
+  {% if can_manage %}<a class="fx-btn fx-btn-primary" href="{{ url_for('yara.create_rule') }}">New rule</a>{% endif %}
+{% endcall %}
+{% include "yara/_availability.html" %}
+<section class="fx-card">
+  {% if rules %}<div class="fx-table-wrap"><table class="fx-table">
+    <thead><tr><th scope="col">Rule</th><th scope="col">Description</th><th scope="col">Applies to</th><th scope="col">Version</th><th scope="col">Status</th><th scope="col">Updated</th></tr></thead>
+    <tbody>{% for r in rules %}<tr>
+      <td><a href="{{ url_for('yara.rule_detail', rule_id=r.rule_id) }}">{{ r.name }}</a>{% if r.author %}<br><span class="fx-muted small">{{ r.author }}</span>{% endif %}</td>
+      <td class="fx-muted">{{ r.description or "—" }}</td>
+      <td>{{ r.scope }}{% if r.scope == "Selected cases" %} ({{ r.case_count }}){% endif %}</td>
+      <td class="fx-mono">v{{ r.current_version }}</td>
+      <td>{% if r.is_enabled %}<span class="fx-badge b-green">Enabled</span>{% else %}<span class="fx-badge b-slate">Disabled</span>{% endif %}</td>
+      <td class="fx-mono small text-nowrap">{{ r.updated_at|datetime }}</td></tr>{% endfor %}</tbody></table></div>
+  {% else %}{{ ui.empty_state("No YARA rules yet", "Administrators add rules here; scans then run from an evidence item's Scans tab.") }}{% endif %}
+</section>
+{% endblock %}

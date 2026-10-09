@@ -63,7 +63,7 @@
         <button class="fx-btn fx-btn-secondary" type="submit">Cite</button></form>{% endif %}
     </section>
     <section class="fx-card"><div class="fx-card-h"><h2>Evidence referenced</h2></div>
-      <ul class="fx-role-list">{% for e in evidence %}<li><span><a class="fx-mono" href="{{ url_for('evidence.detail', code=e.evidence_code) }}">{{ e.evidence_code }}</a> {{ e.evidence_type }}</span>{{ ui.badge(e.integrity_status) }}</li>
+      <ul class="fx-role-list">{% for e in evidence %}<li><span><a class="fx-mono" href="{{ url_for('evidence.detail', code=e.evidence_code) }}">{{ e.evidence_code }}</a> {{ e.evidence_type }}</span>{{ ui.integrity(e.integrity_status) }}</li>
         {% else %}<li class="fx-muted">Evidence appears here through cited examinations</li>{% endfor %}</ul></section>
     {% if can_review %}
     <section class="fx-card"><div class="fx-card-h"><h2>Return to the author</h2></div>

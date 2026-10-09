@@ -58,6 +58,32 @@ class Config:
 
         # Uploads: verification sample files are hashed and discarded (assumption A6)
         self.SAMPLE_FILE_MAX_BYTES = 25 * 1024 * 1024
+        # Stored evidence files (FORGE-X 2.0 Phase 3). 100 MB matches Cloudflare's
+        # free-plan upload limit; only the evidence upload routes accept this size.
+        self.EVIDENCE_FILE_MAX_BYTES = int(os.getenv("EVIDENCE_MAX_MB", "100")) * 1024 * 1024
+        # REST API (FORGE-X 2.0 Phase 10): requests per minute per user; failed token attempts per minute per address.
+        self.API_RATE_LIMIT_PER_MINUTE = int(os.getenv("API_RATE_LIMIT_PER_MINUTE", "120"))
+        self.API_FAILED_AUTH_PER_MINUTE = int(os.getenv("API_FAILED_AUTH_PER_MINUTE", "20"))
+        # YARA scanning (FORGE-X 2.0 Phase 7): limits for the isolated worker process.
+        self.YARA_TIMEOUT_SECONDS = int(os.getenv("YARA_TIMEOUT_SECONDS", "60"))
+        self.YARA_MEMORY_MB = int(os.getenv("YARA_MEMORY_MB", "512"))
+        self.YARA_MAX_RULE_KB = int(os.getenv("YARA_MAX_RULE_KB", "256"))
+        self.EVIDENCE_STORAGE_DIR = os.getenv("EVIDENCE_STORAGE_DIR", "")      # default set in create_app (instance folder)
+        # Object storage (FORGE-X 2.0 Phase 9). "local" (default) or "s3": where NEW files go.
+        self.EVIDENCE_STORAGE_BACKEND = os.getenv("EVIDENCE_STORAGE_BACKEND", "local").strip().lower()
+        self.S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "")            # e.g. http://127.0.0.1:9000 for MinIO
+        self.S3_BUCKET = os.getenv("S3_BUCKET", "")
+        self.S3_PREFIX = os.getenv("S3_PREFIX", "evidence/")
+        self.S3_REGION = os.getenv("S3_REGION", "us-east-1")
+        self.S3_ACCESS_KEY_ID = os.getenv("S3_ACCESS_KEY_ID", "")
+        self.S3_SECRET_ACCESS_KEY = os.getenv("S3_SECRET_ACCESS_KEY", "")
+        self.S3_SSE = os.getenv("S3_SSE", "")                              # e.g. AES256
+        self.S3_CONDITIONAL_WRITES = os.getenv("S3_CONDITIONAL_WRITES", "1") == "1"
+        self.S3_VERIFY_TLS = os.getenv("S3_VERIFY_TLS", "1") == "1"
+        if self.EVIDENCE_STORAGE_BACKEND not in ("local", "s3"):
+            raise RuntimeError("EVIDENCE_STORAGE_BACKEND must be local or s3.")
+        if self.EVIDENCE_STORAGE_BACKEND == "s3" and not self.S3_BUCKET:
+            raise RuntimeError("EVIDENCE_STORAGE_BACKEND=s3 needs S3_BUCKET (and the S3_* settings) in .env.")
         self.MAX_CONTENT_LENGTH = self.SAMPLE_FILE_MAX_BYTES + 1024 * 1024  # room for form fields
 
         # Brute-force protection (counted in MySQL, 15-minute window)
@@ -75,6 +101,7 @@ class Config:
 class TestingConfig(Config):
     """Used by pytest. Reads the same .env, so database tests run against
     your local MySQL. CSRF is off so tests can post forms directly."""
+    __test__ = False      # not a pytest test class (silences PytestCollectionWarning)
 
     TESTING = True
 

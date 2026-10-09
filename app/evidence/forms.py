@@ -1,5 +1,6 @@
 """Evidence forms (Flask-WTF adds a CSRF token to each)."""
 from flask_wtf import FlaskForm
+from flask_wtf.file import FileField
 from wtforms import DateTimeLocalField, HiddenField, IntegerField, SelectField, StringField, TextAreaField
 from wtforms.validators import DataRequired, Length, NumberRange, Optional, ValidationError
 
@@ -27,6 +28,7 @@ class RegisterEvidenceForm(EvidenceDetailsMixin, FlaskForm):
                                        validators=[DataRequired("Describe its condition, e.g. Sealed, intact."),
                                                    Length(min=2, max=200)])
     seal_number = StringField("Seal number", filters=[strip], validators=[Optional(), Length(max=30)])
+    evidence_file = FileField("Evidence file")
     original_hash = StringField("Original SHA-256", filters=[normalise_hash], validators=[Optional()])
     hash_source = SelectField("How was this hash obtained?", choices=list(HASH_SOURCES), default="Computed")
     hash_notes = StringField("Hash notes", filters=[strip], validators=[Optional(), Length(max=500)])
@@ -47,3 +49,7 @@ class RegisterEvidenceForm(EvidenceDetailsMixin, FlaskForm):
 
 class EditEvidenceForm(EvidenceDetailsMixin, FlaskForm):
     version = HiddenField()
+
+
+class AttachFileForm(FlaskForm):
+    evidence_file = FileField("Evidence file")

@@ -1,12 +1,15 @@
 """Examination routes (/examinations)."""
-from flask import Blueprint, abort, current_app, flash, g, redirect, render_template, request, url_for
+from datetime import datetime
+
+from flask import Blueprint, Response, abort, current_app, flash, g, redirect, render_template, request, url_for
 
 from .. import audit
-from ..access import Scope, can_work_on_examination, is_admin
+from ..access import Scope, can_review_examination, can_work_on_examination, is_admin
 from ..auth.decorators import login_required
 from ..pagination import parse_page
 from . import services
-from .forms import CancelForm, CreateExamForm, ExamRecordForm, LinkEvidenceForm
+from .forms import ArtifactForm, CancelForm, CreateExamForm, ExamRecordForm, LinkEvidenceForm, ReviewForm
+from .pdf import build_examination_pdf
 
 bp = Blueprint("examinations", __name__, url_prefix="/examinations")
 
@@ -70,18 +73,37 @@ def create():
     return render_template("examinations/form.html", form=form, cases=cases)
 
 
+TABS = ("overview", "evidence", "methodology", "findings", "artifacts", "history", "report")
+
+
 @bp.get("/<code>")
 @login_required
 def detail(code):
     exam = _load(code)
+    tab = request.args.get("tab", "overview")
+    if tab not in TABS:
+        tab = "overview"
     can_work = can_work_on_examination(g.user, exam)
-    context = dict(exam=exam, can_work=can_work, evidence=services.linked_evidence(exam["examination_id"]),
-                   reports=services.citing_reports(exam["examination_id"]))
+    context = dict(exam=exam, tab=tab, can_work=can_work, can_review=can_review_examination(g.user, exam),
+                   evidence=services.linked_evidence(exam["examination_id"]),
+                   reports=services.citing_reports(exam["examination_id"]),
+                   artifacts=services.artifacts(exam["examination_id"]))
+    if tab == "history":
+        context["history"] = services.history(exam["examination_code"])
     if can_work:
         link_form = LinkEvidenceForm()
         link_form.evidence_ids.choices = [(e["evidence_id"], f"{e['evidence_code']}  {e['description']}")
                                           for e in services.case_evidence_not_linked(exam["case_id"], exam["examination_id"])]
-        context.update(link_form=link_form, cancel_form=CancelForm())
+        artifact_form = ArtifactForm()
+        artifact_form.artifact_type.choices = [(t, t) for t in services.ARTIFACT_TYPES]
+        artifact_form.evidence_id.choices = [(0, "Not tied to one item")] + [
+            (e["evidence_id"], e["evidence_code"]) for e in context["evidence"]]
+        correct = request.args.get("correct", "")
+        if correct.isdigit() and any(a["artifact_id"] == int(correct) for a in context["artifacts"]):
+            artifact_form.corrects_artifact_id.data = correct
+        context.update(link_form=link_form, cancel_form=CancelForm(), artifact_form=artifact_form)
+    if context["can_review"]:
+        context["review_form"] = ReviewForm()
     return render_template("examinations/detail.html", **context)
 
 
@@ -93,12 +115,13 @@ def record(code):
         _deny(code, "edit examination record")
     form = ExamRecordForm()
     if request.method == "GET":
-        for field in ("tools_methods", "observations", "findings", "limitations"):
+        for field in ("tools_methods", "observations", "findings", "conclusion", "limitations"):
             form[field].data = exam[field]
     if form.validate_on_submit():
         try:
             changed = services.update_record(exam["examination_id"], g.user, form.tools_methods.data,
-                                             form.observations.data, form.findings.data, form.limitations.data)
+                                             form.observations.data, form.findings.data, form.limitations.data,
+                                             form.conclusion.data)
         except services.ExamError as err:
             flash(str(err), "danger")
         else:
@@ -126,10 +149,81 @@ def start(code):
     return _action(code, services.start, "Examination started.")
 
 
-@bp.post("/<code>/complete")
+@bp.post("/<code>/submit")
 @login_required
-def complete(code):
-    return _action(code, services.complete, "Examination completed. Its record is now read-only.")
+def submit(code):
+    return _action(code, services.submit, "Submitted for review. The record is frozen until it is approved or returned.")
+
+
+def _review(code, func, message, note):
+    exam = _load(code)
+    if not can_review_examination(g.user, exam):
+        _deny(code, "review examination")
+    try:
+        func(exam["examination_id"], g.user, note)
+    except services.ExamError as err:
+        flash(str(err), "danger")
+    else:
+        flash(message, "success")
+    return redirect(url_for("examinations.detail", code=code))
+
+
+@bp.post("/<code>/approve")
+@login_required
+def approve(code):
+    form = ReviewForm()
+    form.validate_on_submit()
+    return _review(code, services.approve, "Examination approved and completed. Its record is now final.",
+                   form.note.data)
+
+
+@bp.post("/<code>/return")
+@login_required
+def return_for_revision(code):
+    form = ReviewForm()
+    form.validate_on_submit()
+    return _review(code, services.return_for_revision, "Returned to the examiner for revision.", form.note.data)
+
+
+@bp.post("/<code>/artifacts")
+@login_required
+def add_artifact(code):
+    exam = _load(code)
+    if not can_work_on_examination(g.user, exam):
+        _deny(code, "record artifact")
+    form = ArtifactForm()
+    form.artifact_type.choices = [(t, t) for t in services.ARTIFACT_TYPES]
+    form.evidence_id.choices = [(0, "")] + [(e["evidence_id"], e["evidence_code"])
+                                            for e in services.linked_evidence(exam["examination_id"])]
+    if not form.validate_on_submit():
+        problems = [e for field in (form.artifact_type, form.description, form.location, form.evidence_id, form.sha256)
+                    for e in field.errors]
+        flash("The artifact wasn't saved: " + (" ".join(problems) or "check the fields."), "danger")
+        return redirect(url_for("examinations.detail", code=code, tab="artifacts"))
+    corrects = int(form.corrects_artifact_id.data) if (form.corrects_artifact_id.data or "").isdigit() else None
+    try:
+        artifact_id = services.add_artifact(exam["examination_id"], g.user, form.artifact_type.data, form.description.data,
+                                            form.location.data, form.evidence_id.data or None, form.sha256.data, corrects)
+    except services.ExamError as err:
+        flash(str(err), "danger")
+    else:
+        flash(f"Artifact #{artifact_id} recorded. Artifacts can't be edited; record a correction if needed.", "success")
+    return redirect(url_for("examinations.detail", code=code, tab="artifacts"))
+
+
+@bp.get("/<code>/pdf")
+@login_required
+def pdf(code):
+    """Examination report, built from the database on each request (never stored)."""
+    exam = _load(code)
+    data = build_examination_pdf(exam, services.linked_evidence(exam["examination_id"]),
+                                 services.artifacts(exam["examination_id"]),
+                                 services.custody_references(exam["examination_id"]),
+                                 g.user["full_name"], datetime.now())
+    audit.record("exam.export", "Examination", code, details="Examination report PDF")
+    return Response(data, mimetype="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{code}-examination.pdf"',
+                             "Cache-Control": "no-store"})
 
 
 @bp.post("/<code>/cancel")

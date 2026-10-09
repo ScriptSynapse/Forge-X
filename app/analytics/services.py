@@ -11,7 +11,7 @@ from datetime import date
 from ..db import query_all
 
 PERIODS = (6, 12, 24)
-STATUS_ORDER = ("Pending", "In Progress", "Completed", "Cancelled")
+STATUS_ORDER = ("Pending", "In Progress", "Under Review", "Completed", "Cancelled")
 
 # Recursive CTE that produces one row per month for the last :months months.
 MONTHS_CTE = """
@@ -92,6 +92,7 @@ SELECT ct.type_name AS label,
 SELECT xt.type_name AS label,
        COALESCE(SUM(x.status = 'Pending'), 0)     AS pending,
        COALESCE(SUM(x.status = 'In Progress'), 0) AS in_progress,
+       COALESCE(SUM(x.status = 'Under Review'), 0) AS under_review,
        COALESCE(SUM(x.status = 'Completed'), 0)   AS completed,
        COALESCE(SUM(x.status = 'Cancelled'), 0)   AS cancelled
   FROM examination_types xt
@@ -137,7 +138,7 @@ SELECT coc.action AS label, COUNT(*) AS entries
  WHERE coc.occurred_at >= DATE_SUB(CURDATE(), INTERVAL {months} MONTH) {scope}
  GROUP BY coc.action
  ORDER BY FIELD(coc.action, 'Collected', 'Received', 'Transferred', 'Checked Out', 'Examined',
-                'Returned', 'Stored', 'Released', 'Archived')""",
+                'Returned', 'Stored', 'Released', 'Archived', 'Exported')""",
         "scope_uses": 1,
     },
     "storage-occupancy": {
@@ -197,14 +198,14 @@ def run(chart_id, scope, months):
     elif chart_id == "verification-outcomes":
         labels = [_month(r["month_start"]) for r in rows]
         datasets = [{"label": "Verified", "values": [int(r["verified"]) for r in rows]},
-                    {"label": "Failed", "values": [int(r["failed"]) for r in rows]}]
+                    {"label": "Integrity mismatch", "values": [int(r["failed"]) for r in rows]}]
     elif chart_id == "resolution-by-type":
         labels = [f"{r['label']} ({int(r['closed_cases'])})" for r in rows]
         datasets = [{"label": "Average days to close", "values": [float(r["avg_days"] or 0) for r in rows]}]
     elif chart_id == "examinations-by-type":
         labels = [r["label"] for r in rows]
         datasets = [{"label": s, "values": [int(r[key]) for r in rows]}
-                    for s, key in zip(STATUS_ORDER, ("pending", "in_progress", "completed", "cancelled"))]
+                    for s, key in zip(STATUS_ORDER, ("pending", "in_progress", "under_review", "completed", "cancelled"))]
     elif chart_id == "investigator-workload":
         labels = [f"#{int(r['workload_rank'])} {r['label']}" for r in rows]
         datasets = [{"label": "Open cases", "values": [int(r["open_cases"]) for r in rows]},

@@ -17,7 +17,8 @@ MESSAGES = {
     403: ("Access denied", "You don't have permission to view this page."),
     404: ("Page not found", "The page you're looking for doesn't exist or has moved."),
     405: ("Method not allowed", "This page doesn't accept that kind of request."),
-    413: ("File too large", "Files must be 25 MB or smaller."),
+    413: ("File too large", "The upload is larger than this page accepts: 25 MB for verification samples, "
+                            "or the evidence-file limit (100 MB by default) when storing evidence."),
     429: ("Too many requests", "Too many attempts. Wait a few minutes and try again."),
     500: ("Something went wrong", "An unexpected error occurred and has been logged."),
     503: ("Database unavailable",

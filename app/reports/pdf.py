@@ -15,6 +15,8 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+from ..ui import integrity_label
+
 NAVY = colors.HexColor("#07111F")
 BLUE = colors.HexColor("#1677FF")
 CYAN = colors.HexColor("#35BFFF")
@@ -174,7 +176,7 @@ def build_report_pdf(report, version, examinations, evidence, generated_by, gene
         rows = [[Paragraph(h, st["cellb"]) for h in ("Evidence ID", "Type / description", "Integrity", "Current reference SHA-256")]]
         rows += [[Paragraph(escape(e["evidence_code"]), st["cell"]),
                   Paragraph(f"{escape(e['evidence_type'])}<br/>{_text(e['description'])}", st["cell"]),
-                  Paragraph(escape(e["integrity_status"]), st["cell"]),
+                  Paragraph(escape(integrity_label(e["integrity_status"])), st["cell"]),
                   Paragraph(escape(e["current_hash_value"] or "None recorded"), st["mono"])] for e in evidence]
         story.append(_grid(rows, [36 * mm, 44 * mm, 22 * mm, 72 * mm]))
         story.append(Spacer(1, 4))

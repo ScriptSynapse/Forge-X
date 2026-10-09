@@ -13,12 +13,15 @@ pytestmark = pytest.mark.db
 
 DENIED = {1142, 1044, 1227, 1410}       # table / database / global privilege errors
 APPEND_ONLY = ("audit_logs", "login_attempts", "chain_of_custody", "evidence_hashes", "hash_verifications",
-               "report_versions", "examination_evidence", "report_examinations")
+               "report_versions", "examination_evidence", "report_examinations", "case_notes",
+               "evidence_files", "examination_artifacts",
+               "yara_rule_versions", "yara_scans", "yara_scan_rules", "yara_matches", "evidence_file_locations")
 NO_DELETE = ("users", "evidence", "examinations", "forensic_reports", "account_requests",
-             "storage_locations", "reference_sequences") + APPEND_ONLY
+             "storage_locations", "reference_sequences", "yara_rules", "api_tokens") + APPEND_ONLY
 # Granted UPDATE, with a column to use in the harmless control statement.
 UPDATABLE = {"users": "created_at", "cases": "created_at", "evidence": "registered_at",
-             "examinations": "created_at", "forensic_reports": "created_at", "storage_locations": "description"}
+             "examinations": "created_at", "forensic_reports": "created_at", "storage_locations": "description",
+             "yara_rules": "description", "api_tokens": "last_used_at"}
 
 
 def denied(sql):
@@ -35,7 +38,9 @@ def denied(sql):
 def test_append_only_tables_cannot_be_updated(app, db_available, table):
     column = {"audit_logs": "details", "login_attempts": "ip_address", "chain_of_custody": "reason",
               "evidence_hashes": "source_notes", "hash_verifications": "notes", "report_versions": "change_note",
-              "examination_evidence": "linked_at", "report_examinations": "linked_at"}[table]
+              "examination_evidence": "linked_at", "report_examinations": "linked_at", "case_notes": "note_text", "evidence_files": "original_name", "examination_artifacts": "description",
+              "yara_rule_versions": "change_note", "yara_scans": "error_message", "yara_scan_rules": "scan_id",
+              "yara_matches": "tags", "evidence_file_locations": "note"}[table]
     with app.app_context():
         assert denied(f"UPDATE {table} SET {column} = {column} WHERE 1 = 0"), f"app account can UPDATE {table}"
 

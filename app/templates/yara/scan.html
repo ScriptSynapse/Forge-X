@@ -1,0 +1,42 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}YARA scan #{{ scan.scan_id }}{% endblock %}
+{% block content %}
+<nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('evidence.detail', code=scan.evidence_code, tab='scans') }}" class="fx-mono">{{ scan.evidence_code }}</a><span aria-hidden="true">/</span><span aria-current="page">YARA scan #{{ scan.scan_id }}</span></nav>
+{% call ui.page_header("YARA scan #" ~ scan.scan_id, scan.description) %}
+  {% set tone = {"Completed": "b-green", "Failed": "b-red", "Timed out": "b-amber", "Memory limit": "b-amber"}[scan.status] %}
+  <span class="fx-badge {{ tone }}">{{ scan.status }}</span>
+  {% if scan.status == "Completed" %}<span class="fx-badge {{ 'b-red' if scan.matched_count else 'b-slate' }}">{{ scan.matched_count }} rule{{ "s" if scan.matched_count != 1 }} matched</span>{% endif %}
+{% endcall %}
+{% if scan.status != "Completed" %}<div class="fx-alert b-amber" role="status"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i><div><strong>The scan did not complete.</strong><p>{{ scan.error_message }}</p></div></div>{% endif %}
+{% if scan.hash_matches == 0 %}<div class="fx-alert b-red" role="alert"><i class="bi bi-shield-exclamation" aria-hidden="true"></i><div><strong>The stored file no longer matches its recorded SHA-256.</strong><p>The results describe the file as it is now, which isn't the file that was stored. Verify the stored file from the evidence page.</p></div></div>{% endif %}
+<div class="fx-detail-grid">
+  <section class="fx-card"><div class="fx-card-h"><h2>Scan</h2></div><div class="fx-card-b"><dl class="fx-dl">
+    <dt>Evidence</dt><dd><a class="fx-mono" href="{{ url_for('evidence.detail', code=scan.evidence_code) }}">{{ scan.evidence_code }}</a> (case <a class="fx-mono" href="{{ url_for('cases.detail', reference=scan.case_reference) }}">{{ scan.case_reference }}</a>)</dd>
+    <dt>File</dt><dd class="fx-mono">{{ scan.original_name }}</dd>
+    <dt>SHA-256 at scan time</dt><dd><code class="fx-hash">{{ scan.file_sha256 or "Not computed" }}</code>{% if scan.hash_matches %}<span class="fx-badge b-green">Matches the recorded hash</span>{% endif %}</dd>
+    <dt>Scanner</dt><dd>{{ scan.scanner_version or "—" }}</dd>
+    <dt>When</dt><dd>{{ scan.started_at|datetime }}, {{ "%.1f"|format((scan.duration_ms or 0) / 1000) }} s, by {{ scan.requested_by_name }}</dd>
+    <dt>Limits</dt><dd class="small">{{ scan.limits_note or "Worker time and memory limits applied" }}</dd></dl></div></section>
+  <section class="fx-card"><div class="fx-card-h"><h2>Rules used ({{ rules|length }})</h2></div>
+    <ul class="fx-role-list">{% for r in rules %}<li><a href="{{ url_for('yara.rule_detail', rule_id=r.rule_id, v=r.version_no) }}">{{ r.name }}</a><span class="fx-mono small">v{{ r.version_no }}</span></li>{% endfor %}</ul></section>
+</div>
+<section class="fx-card" aria-labelledby="matches-h">
+  <div class="fx-card-h"><h2 id="matches-h">Matches</h2><span class="fx-muted small">A match means the rule's conditions were met by the file's bytes. It is an indicator for the examiner, not a conclusion.</span></div>
+  {% if matches %}
+  {% for m in matches %}
+  <div class="fx-card-b border-top">
+    <div class="d-flex flex-wrap gap-2 align-items-center"><strong class="fx-mono">{{ m.rule_identifier }}</strong>
+      <span class="fx-muted small">from <a href="{{ url_for('yara.rule_detail', rule_id=m.rule_id, v=m.version_no) }}">{{ m.rule_name }} v{{ m.version_no }}</a></span>
+      {% for t in (m.tags or "").split(", ") if t %}<span class="fx-tag">{{ t }}</span>{% endfor %}</div>
+    {% if m.metadata %}<dl class="fx-dl fx-dl-tight mt-2">{% for k, v in m.metadata %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}</dl>{% endif %}
+    {% if m.patterns %}<div class="fx-table-wrap mt-2"><table class="fx-table">
+      <thead><tr><th scope="col">Pattern</th><th scope="col" class="num">Matches</th><th scope="col">First offsets (length)</th></tr></thead>
+      <tbody>{% for p in m.patterns %}<tr><td class="fx-mono">{{ p.identifier }}</td><td class="num">{{ p.count }}</td>
+        <td class="fx-mono small">{% for x in p.matches %}{{ "0x%x"|format(x.offset) }} ({{ x.length }}){{ ", " if not loop.last }}{% endfor %}{% if p.count > p.matches|length %} …{% endif %}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+  </div>
+  {% endfor %}
+  {% elif scan.status == "Completed" %}{{ ui.empty_state("No rule matched", "None of the " ~ rules|length ~ " rules matched this file.") }}
+  {% else %}{{ ui.empty_state("No results", "The scan didn't complete, so there are no matches to report.") }}{% endif %}
+</section>
+{% endblock %}

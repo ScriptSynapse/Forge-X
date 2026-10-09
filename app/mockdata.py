@@ -259,7 +259,7 @@ def seed(app, admin_username, log=print):
                 "The evidence is consistent with ransomware started by the scheduled task.",
                 "How the program first reached the server has not been established yet.")
         if find_exam(ref["a"], xtype["Disk Image Examination"])["status"] == "In Progress":
-            exams.complete(x1["examination_id"], g.user)
+            exams.submit(x1["examination_id"], g.user)          # FORGE-X 2.0: completion needs an independent review
         sections = {"methodology": f"Disk image examination on a verified working copy ({x1['examination_code']}).",
                     "observations": "An hourly scheduled task launches an unsigned program; 1,842 files carry the "
                                     ".lockacc extension.",
@@ -281,6 +281,8 @@ def seed(app, admin_username, log=print):
         log(f"  Examination {x1['examination_code']} completed; report {rp} submitted")
 
     with as_user(admin_id):
+        if find_exam(ref["a"], xtype["Disk Image Examination"])["status"] == "Under Review":
+            exams.approve(x1["examination_id"], g.user, "Reviewed by the administrator")
         report = reports.get_report(Scope(g.user), rp)
         if report["status"] == "Under Review":
             reports.approve(report["report_id"], g.user)

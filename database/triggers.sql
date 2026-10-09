@@ -7,6 +7,11 @@
 --   A. Append-only guards (6 tables x UPDATE/DELETE = 12 triggers)
 --   B. Integrity rules CHECK constraints cannot express (8 triggers)
 --   C. Database-level audit of role changes (2 triggers)
+--   D. Case notes, FORGE-X 2.0 (append-only + insert rules: 3 triggers)
+--   E. Stored evidence files, FORGE-X 2.0 (append-only: 2 triggers)
+--   F. Examination review and artifacts, FORGE-X 2.0 (4 triggers)
+--   G. YARA history tables, FORGE-X 2.0 (append-only: 8 triggers)
+--   H. Evidence file locations, FORGE-X 2.0 (append-only: 2 triggers); 41 in total
 --
 -- Limitations (documented for the viva):
 --   * Triggers do not fire for TRUNCATE or DROP. The application
@@ -196,5 +201,124 @@ BEGIN
     JOIN roles r ON r.role_id = OLD.role_id
    WHERE u.user_id = OLD.user_id;
 END$$
+
+
+-- ---------------------------------------------------------------------
+-- FORGE-X 2.0: case notes (append-only, same-case corrections, no notes on closed cases)
+-- ---------------------------------------------------------------------
+CREATE TRIGGER trg_cn_no_update BEFORE UPDATE ON case_notes FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Case notes cannot be edited. Add a correction note instead.';
+END$$
+
+CREATE TRIGGER trg_cn_no_delete BEFORE DELETE ON case_notes FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Case notes cannot be deleted.';
+END$$
+
+CREATE TRIGGER trg_cn_before_insert BEFORE INSERT ON case_notes FOR EACH ROW
+BEGIN
+  DECLARE v_status VARCHAR(20);
+  DECLARE v_corrected_case INT UNSIGNED;
+  SELECT status INTO v_status FROM cases WHERE case_id = NEW.case_id;
+  IF v_status = 'Closed' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Notes cannot be added to a closed case.';
+  END IF;
+  IF NEW.corrects_note_id IS NOT NULL THEN
+    SELECT case_id INTO v_corrected_case FROM case_notes WHERE note_id = NEW.corrects_note_id;
+    IF v_corrected_case IS NULL OR v_corrected_case <> NEW.case_id THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'A correction must refer to a note on the same case.';
+    END IF;
+  END IF;
+END$$
+
+
+-- ---------------------------------------------------------------------
+-- FORGE-X 2.0: stored evidence file records are append-only
+-- ---------------------------------------------------------------------
+CREATE TRIGGER trg_ef_no_update BEFORE UPDATE ON evidence_files FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Stored evidence file records cannot be edited.';
+END$$
+
+CREATE TRIGGER trg_ef_no_delete BEFORE DELETE ON evidence_files FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Stored evidence file records cannot be deleted.';
+END$$
+
+
+-- ---------------------------------------------------------------------
+-- FORGE-X 2.0: examination review rules and append-only artifacts
+-- ---------------------------------------------------------------------
+CREATE TRIGGER trg_exam_finalised BEFORE UPDATE ON examinations FOR EACH ROW
+BEGIN
+  IF OLD.status IN ('Completed', 'Cancelled') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Completed and cancelled examinations cannot be changed.';
+  END IF;
+  IF NEW.status = 'Completed' AND (OLD.status <> 'Under Review' OR NEW.reviewed_by IS NULL) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'An examination is completed only by an independent review.';
+  END IF;
+END$$
+
+CREATE TRIGGER trg_art_no_update BEFORE UPDATE ON examination_artifacts FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Artifacts cannot be edited. Record a correction instead.';
+END$$
+
+CREATE TRIGGER trg_art_no_delete BEFORE DELETE ON examination_artifacts FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Artifacts cannot be deleted.';
+END$$
+
+CREATE TRIGGER trg_art_before_insert BEFORE INSERT ON examination_artifacts FOR EACH ROW
+BEGIN
+  DECLARE v_status VARCHAR(20);
+  DECLARE v_other_exam INT UNSIGNED;
+  SELECT status INTO v_status FROM examinations WHERE examination_id = NEW.examination_id;
+  IF v_status NOT IN ('Pending', 'In Progress') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Artifacts can only be recorded while the examination is open.';
+  END IF;
+  IF NEW.evidence_id IS NOT NULL AND NOT EXISTS (
+       SELECT 1 FROM examination_evidence WHERE examination_id = NEW.examination_id AND evidence_id = NEW.evidence_id) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'The artifact must come from evidence linked to this examination.';
+  END IF;
+  IF NEW.corrects_artifact_id IS NOT NULL THEN
+    SELECT examination_id INTO v_other_exam FROM examination_artifacts WHERE artifact_id = NEW.corrects_artifact_id;
+    IF v_other_exam IS NULL OR v_other_exam <> NEW.examination_id THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'A correction must refer to an artifact of the same examination.';
+    END IF;
+  END IF;
+END$$
+
+
+
+-- ---------------------------------------------------------------------
+-- FORGE-X 2.0: YARA history tables are append-only
+-- ---------------------------------------------------------------------
+CREATE TRIGGER trg_yrv_no_update BEFORE UPDATE ON yara_rule_versions FOR EACH ROW
+BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'YARA rule versions cannot be edited. Save a new version.'; END$$
+CREATE TRIGGER trg_yrv_no_delete BEFORE DELETE ON yara_rule_versions FOR EACH ROW
+BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'YARA rule versions cannot be deleted.'; END$$
+CREATE TRIGGER trg_ys_no_update BEFORE UPDATE ON yara_scans FOR EACH ROW
+BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'YARA scan records cannot be edited.'; END$$
+CREATE TRIGGER trg_ys_no_delete BEFORE DELETE ON yara_scans FOR EACH ROW
+BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'YARA scan records cannot be deleted.'; END$$
+CREATE TRIGGER trg_ysr_no_update BEFORE UPDATE ON yara_scan_rules FOR EACH ROW
+BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'YARA scan records cannot be edited.'; END$$
+CREATE TRIGGER trg_ysr_no_delete BEFORE DELETE ON yara_scan_rules FOR EACH ROW
+BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'YARA scan records cannot be deleted.'; END$$
+CREATE TRIGGER trg_ym_no_update BEFORE UPDATE ON yara_matches FOR EACH ROW
+BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'YARA match records cannot be edited.'; END$$
+CREATE TRIGGER trg_ym_no_delete BEFORE DELETE ON yara_matches FOR EACH ROW
+BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'YARA match records cannot be deleted.'; END$$
+
+
+-- ---------------------------------------------------------------------
+-- FORGE-X 2.0: evidence file location history is append-only
+-- ---------------------------------------------------------------------
+CREATE TRIGGER trg_efl_no_update BEFORE UPDATE ON evidence_file_locations FOR EACH ROW
+BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Evidence file location records cannot be edited.'; END$$
+CREATE TRIGGER trg_efl_no_delete BEFORE DELETE ON evidence_file_locations FOR EACH ROW
+BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Evidence file location records cannot be deleted.'; END$$
 
 DELIMITER ;

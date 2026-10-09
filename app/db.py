@@ -324,7 +324,7 @@ def retry_on_transient(attempts=2):
 # Triggers are not counted here: information_schema.TRIGGERS only lists
 # triggers to accounts holding the TRIGGER privilege, which the least-privilege
 # app account deliberately lacks. triggers_active() tests them by behaviour.
-EXPECTED_OBJECTS = {"tables": 22, "views": 8, "procedures": 12, "functions": 2}
+EXPECTED_OBJECTS = {"tables": 33, "views": 8, "procedures": 12, "functions": 2}   # 22 + 004, 005, 007, 6 YARA (008), 009, api_tokens (010)
 
 
 def check_connection():

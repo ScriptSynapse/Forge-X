@@ -19,6 +19,7 @@
     {{ ui.field(form.case_type_id) }}
     {{ ui.field(form.priority) }}
   </div>
+  {{ ui.field(form.due_date, help="Optional deadline for the case. It shows as overdue once it passes while the case is open.") }}
   {{ ui.field(form.description, help="What happened, and what the lab has been asked to do.") }}
   {% if creating %}
     {% if "lead_user_id" in form %}

@@ -1,4 +1,6 @@
 """Command-line tools, run with `flask --app run <command>`."""
+import os
+
 import click
 from flask import current_app
 
@@ -66,6 +68,45 @@ def register_cli(app):
             can_delete_cases = False
         report(can_delete_cases, "Delete empty cases (DELETE on cases)",
                "granted" if can_delete_cases else "missing: run database/migrations/003_allow_case_delete.sql as root")
+
+        has_notes = query_value("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() "
+                                "AND TABLE_NAME = 'case_notes'")
+        has_due = query_value("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() "
+                              "AND TABLE_NAME = 'cases' AND COLUMN_NAME = 'due_date'")
+        report(bool(has_notes and has_due), "Case notes and due dates (FORGE-X 2.0 Phase 2)",
+               "present" if has_notes and has_due else
+               "missing: run database/migrations/004_case_notes_and_due_date.sql as root")
+
+        has_files = query_value("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() "
+                                "AND TABLE_NAME = 'evidence_files'")
+        report(bool(has_files), "Stored evidence files (FORGE-X 2.0 Phase 3)",
+               "present" if has_files else "missing: run database/migrations/005_evidence_files.sql as root")
+        from .storage import StorageError, get_storage
+        storage_ok, storage_message = get_storage("local").health()
+        report(storage_ok, "Evidence storage folder (EVIDENCE_STORAGE_DIR)", storage_message)
+        has_locations = query_value("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() "
+                                    "AND TABLE_NAME = 'evidence_file_locations'")
+        report(bool(has_locations), "Evidence file locations (FORGE-X 2.0 Phase 9)",
+               "present" if has_locations else "missing: run database/migrations/009_evidence_file_locations.sql as root")
+        backend = current_app.config["EVIDENCE_STORAGE_BACKEND"]
+        if backend == "s3":
+            try:
+                s3_ok, s3_message = get_storage("s3").health()
+            except StorageError as err:
+                s3_ok, s3_message = False, str(err)
+            report(s3_ok, "Object storage for new evidence files (S3)", s3_message)
+        else:
+            click.echo("  info  New evidence files go to local storage (EVIDENCE_STORAGE_BACKEND=local)")
+
+        has_yara = query_value("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() "
+                               "AND TABLE_NAME = 'yara_rules'")
+        report(bool(has_yara), "YARA tables (FORGE-X 2.0 Phase 7)",
+               "present" if has_yara else "missing: run database/migrations/008_yara.sql as root")
+        from .yara.runner import psutil as _psutil, run_worker
+        ping = run_worker({"mode": "ping"}, timeout=20)
+        click.echo(f"  info  YARA worker: {ping.get('scanner_version') if ping.get('ok') else ping.get('error')}")
+        click.echo("  info  YARA memory limit: " + ("psutil watchdog" if _psutil else
+                   "OS limit (Linux)" if os.name != "nt" else "NOT enforced: pip install psutil"))
 
         has_location_audit = query_value(
             "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() "
@@ -203,3 +244,48 @@ def register_cli(app):
                                fg="green"))
         for username, (_uid, password, role) in created.items():
             click.echo(f"  {username:10} {password or '(unchanged: already in use)'}   ({role})")
+
+
+    # ------------------------------------------------------------------
+    # Evidence storage (FORGE-X 2.0 Phase 9)
+    # ------------------------------------------------------------------
+    @app.cli.command("storage-status")
+    def storage_status():
+        """Show where every stored evidence file is (local or s3)."""
+        from .storage.migrate import status
+        rows = status()
+        counts = {}
+        for row in rows:
+            counts[row["backend"]] = counts.get(row["backend"], 0) + 1
+        click.echo(f"{len(rows)} stored file(s): " + (", ".join(f"{n} on {b}" for b, n in sorted(counts.items())) or "none"))
+        click.echo(f"New files go to: {current_app.config['EVIDENCE_STORAGE_BACKEND']}")
+
+    @app.cli.command("storage-migrate")
+    @click.option("--to", "target", type=click.Choice(["local", "s3"]), required=True, help="Backend to move files to.")
+    @click.option("--by", "admin_username", required=True, help="The administrator responsible (recorded on every move).")
+    @click.option("--limit", type=int, default=None, help="Move at most this many files.")
+    @click.option("--dry-run", is_flag=True, help="Only check source hashes and list what would move.")
+    def storage_migrate(target, admin_username, limit, dry_run):
+        """Copy evidence files to another backend, verifying SHA-256 before and after.
+
+        Never deletes the source copy: to roll back, run it again with --to
+        pointing back. Every move is recorded in evidence_file_locations and
+        in the audit log."""
+        from .storage import StorageError
+        from .storage.migrate import migrate
+        admin = query_one(
+            "SELECT u.user_id FROM users u JOIN user_roles ur ON ur.user_id = u.user_id JOIN roles r "
+            "ON r.role_id = ur.role_id WHERE u.username = %s AND u.account_status = 'Active' "
+            "AND r.role_name = 'Administrator'", (admin_username,))
+        if admin is None:
+            click.echo(click.style(f"{admin_username} is not an active administrator.", fg="red"))
+            raise SystemExit(1)
+        try:
+            counts = migrate(target, admin["user_id"], limit=limit, dry_run=dry_run, log=click.echo)
+        except StorageError as err:
+            click.echo(click.style(str(err), fg="red"))
+            raise SystemExit(1)
+        click.echo(f"Done: {counts['moved']} copied, {counts['already_there']} already there, "
+                   f"{counts['skipped']} skipped (source problem), {counts['failed']} failed.")
+        if counts["skipped"] or counts["failed"]:
+            raise SystemExit(1)

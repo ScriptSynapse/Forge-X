@@ -4,7 +4,7 @@ from flask import Blueprint, abort, current_app, flash, g, redirect, render_temp
 from .. import audit
 from ..access import Scope, can_correct_records, custody_actions_for
 from ..auth.decorators import login_required
-from ..evidence.services import get_evidence
+from ..evidence.services import get_evidence, visible_case_refs
 from ..integrity.services import is_assigned
 from ..pagination import parse_page
 from . import services
@@ -38,7 +38,8 @@ def index():
     scope = Scope(g.user)
     filters = services.CustodyFilters.from_args(request.args)
     page = services.custody_log(scope, filters, parse_page(request.args.get("page")), current_app.config["PAGE_SIZE"])
-    return render_template("custody/index.html", page=page, filters=filters, actions=services.ACTIONS,
+    return render_template("custody/index.html", page=page, filters=filters, actions=services.EVENT_TYPES,
+                           people=services.people_for_filter(), cases=visible_case_refs(scope),
                            out=services.out_of_storage(scope), scope=scope)
 
 

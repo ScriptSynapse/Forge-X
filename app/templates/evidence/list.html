@@ -1,8 +1,8 @@
 {% extends "layouts/app.html" %}
 {% import "macros/ui.html" as ui %}
-{% block title %}Evidence{% endblock %}
+{% block title %}Evidence Vault{% endblock %}
 {% block content %}
-{% call ui.page_header("Evidence", page.total ~ " item" ~ ("s" if page.total != 1 else "") ~ (" matching your filters" if filters.active else "") ~ ". FORGE-X stores evidence details and hashes, never the evidence files themselves.") %}
+{% call ui.page_header("Evidence Vault", page.total ~ " item" ~ ("s" if page.total != 1 else "") ~ (" matching your filters" if filters.active else "") ~ ". FORGE-X stores evidence details and hashes, never the evidence files themselves.") %}
   {% if can_register %}<a class="fx-btn fx-btn-primary" href="{{ url_for('evidence.create') }}"><i class="bi bi-plus-lg" aria-hidden="true"></i>Register evidence</a>{% endif %}
 {% endcall %}
 
@@ -15,6 +15,10 @@
 </nav>
 
 <section class="fx-card">
+  {% if filters.awaiting %}
+  <p class="fx-filter-note">Showing items <strong>awaiting examination</strong>: linked to an examination that hasn't started yet.
+    <a href="{{ url_for('evidence.list_evidence', **(filters.as_args()|dict_without('awaiting'))) }}">Remove this filter</a></p>
+  {% endif %}
   <form method="get" action="{{ url_for('evidence.list_evidence') }}" class="fx-filter-bar" role="search">
     {% if filters.status %}<input type="hidden" name="status" value="{{ filters.status }}">{% endif %}
     <div class="fx-filter-grow"><label class="fx-label" for="f-q">Search</label>
@@ -27,10 +31,21 @@
         {% for c in cases %}<option value="{{ c.case_reference }}" {% if filters.case_reference == c.case_reference %}selected{% endif %}>{{ c.case_reference }}</option>{% endfor %}</select></div>
     <div><label class="fx-label" for="f-integrity">Integrity</label>
       <select id="f-integrity" name="integrity" class="fx-input"><option value="">Any</option>
-        {% for i in integrity_statuses %}<option value="{{ i }}" {% if filters.integrity == i %}selected{% endif %}>{{ i }}</option>{% endfor %}</select></div>
+        {% for i in integrity_statuses %}<option value="{{ i }}" {% if filters.integrity == i %}selected{% endif %}>{{ i|integrity_label }}</option>{% endfor %}</select></div>
+    <div><label class="fx-label" for="f-investigator">Investigator</label>
+      <select id="f-investigator" name="investigator" class="fx-input"><option value="">Anyone</option>
+        {% for u in investigators %}<option value="{{ u.user_id }}" {% if filters.investigator_id == u.user_id %}selected{% endif %}>{{ u.full_name }}</option>{% endfor %}</select></div>
+    <div><label class="fx-label" for="f-from">Collected from</label><input id="f-from" name="from" type="date" class="fx-input" value="{{ filters.date_from or '' }}"></div>
+    <div><label class="fx-label" for="f-to">to</label><input id="f-to" name="to" type="date" class="fx-input" value="{{ filters.date_to or '' }}"></div>
+    <div><label class="fx-label" for="f-file">Stored file</label>
+      <select id="f-file" name="file" class="fx-input"><option value="">Any</option>
+        <option value="yes" {% if filters.has_file == 'yes' %}selected{% endif %}>With a stored file</option>
+        <option value="no" {% if filters.has_file == 'no' %}selected{% endif %}>Without</option></select></div>
     <div><label class="fx-label" for="f-sort">Sort by</label>
       <select id="f-sort" name="sort" class="fx-input">
-        {% for key, (label, _sql) in sorts.items() %}<option value="{{ key }}" {% if filters.sort == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+        {% if filters.sort not in sort_menu %}<option value="{{ filters.sort }}" selected>{{ sorts[filters.sort][0] }}</option>{% endif %}
+        {% for key in sort_menu %}<option value="{{ key }}" {% if filters.sort == key %}selected{% endif %}>{{ sorts[key][0] }}</option>{% endfor %}</select></div>
+    {% if filters.awaiting %}<input type="hidden" name="awaiting" value="1">{% endif %}
     <div class="fx-filter-actions"><button type="submit" class="fx-btn fx-btn-secondary">Apply</button>
       {% if filters.active or filters.sort != "newest" %}<a class="fx-btn fx-btn-ghost" href="{{ url_for('evidence.list_evidence') }}">Clear</a>{% endif %}</div>
   </form>
@@ -38,14 +53,25 @@
   {% if page.items %}
   <div class="fx-table-wrap">
     <table class="fx-table">
-      <thead><tr><th>Evidence ID</th><th>Case</th><th>Type</th><th>Description</th><th>Status</th><th>Integrity</th><th>Collected</th><th>Custodian</th><th>Location</th></tr></thead>
+      {% set a = filters.as_args() %}
+      <thead><tr>
+        {{ ui.sort_th("Evidence ID", "code", filters.sort, "evidence.list_evidence", a) }}{{ ui.sort_th("Case", "case", filters.sort, "evidence.list_evidence", a) }}
+        {{ ui.sort_th("Type", "type", filters.sort, "evidence.list_evidence", a) }}<th scope="col">Description</th>
+        {{ ui.sort_th("Status", "status", filters.sort, "evidence.list_evidence", a) }}{{ ui.sort_th("Integrity", "integrity", filters.sort, "evidence.list_evidence", a) }}
+        <th scope="col">SHA-256</th><th scope="col">File</th><th scope="col">Examination</th>
+        {{ ui.sort_th("Collected", "collected", filters.sort, "evidence.list_evidence", a) }}{{ ui.sort_th("Custodian", "custodian", filters.sort, "evidence.list_evidence", a) }}
+        <th scope="col">Location</th>
+      </tr></thead>
       <tbody>
       {% for e in page.items %}
         <tr>
           <td><a class="fx-mono" href="{{ url_for('evidence.detail', code=e.evidence_code) }}">{{ e.evidence_code }}</a></td>
           <td><a class="fx-mono" href="{{ url_for('cases.detail', reference=e.case_reference) }}">{{ e.case_reference }}</a></td>
           <td>{{ e.evidence_type }}</td><td>{{ e.description }}</td>
-          <td>{{ ui.badge(e.current_status) }}</td><td>{{ ui.badge(e.integrity_status) }}</td>
+          <td>{{ ui.badge(e.current_status) }}</td><td>{{ ui.integrity(e.integrity_status) }}</td>
+          <td class="fx-mono small">{% if e.current_hash %}<abbr title="{{ e.current_hash }}">{{ e.current_hash[:12] }}…</abbr>{% else %}<span class="fx-muted">—</span>{% endif %}</td>
+          <td class="small">{% if e.has_file %}<i class="bi bi-file-earmark-lock" aria-hidden="true"></i> {{ e.file_type }}{% else %}<span class="fx-muted">None</span>{% endif %}</td>
+          <td>{% if e.exam_status %}{{ ui.badge(e.exam_status) }}{% else %}<span class="fx-muted small">None</span>{% endif %}</td>
           <td class="text-nowrap">{{ e.collected_at|date }}</td><td>{{ e.current_custodian }}</td><td>{{ e.current_location or "—" }}</td>
         </tr>
       {% endfor %}

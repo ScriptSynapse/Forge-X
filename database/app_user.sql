@@ -69,6 +69,29 @@ GRANT INSERT, UPDATE, DELETE ON forge_x_db.case_investigators TO 'forge_x_app_ro
 -- examinations or reports: the RESTRICT foreign keys refuse otherwise).
 GRANT DELETE ON forge_x_db.cases TO 'forge_x_app_role';
 
+-- Case notes are append-only (FORGE-X 2.0): INSERT only, no UPDATE or DELETE.
+GRANT INSERT ON forge_x_db.case_notes TO 'forge_x_app_role';
+
+-- Stored evidence file records are append-only (FORGE-X 2.0): INSERT only.
+GRANT INSERT ON forge_x_db.evidence_files TO 'forge_x_app_role';
+
+-- Examination artifacts are append-only (FORGE-X 2.0): INSERT only.
+GRANT INSERT ON forge_x_db.examination_artifacts TO 'forge_x_app_role';
+
+-- YARA (FORGE-X 2.0 Phase 7): rules are mutable (flags); versions, scans and matches append-only.
+GRANT INSERT, UPDATE ON forge_x_db.yara_rules         TO 'forge_x_app_role';
+GRANT INSERT         ON forge_x_db.yara_rule_versions TO 'forge_x_app_role';
+GRANT INSERT, DELETE ON forge_x_db.yara_rule_cases    TO 'forge_x_app_role';
+GRANT INSERT         ON forge_x_db.yara_scans         TO 'forge_x_app_role';
+GRANT INSERT         ON forge_x_db.yara_scan_rules    TO 'forge_x_app_role';
+GRANT INSERT         ON forge_x_db.yara_matches       TO 'forge_x_app_role';
+
+-- Evidence file location history (FORGE-X 2.0 Phase 9): append-only, INSERT only.
+GRANT INSERT ON forge_x_db.evidence_file_locations TO 'forge_x_app_role';
+
+-- API tokens (FORGE-X 2.0 Phase 10): created, marked used, revoked. Never deleted.
+GRANT INSERT, UPDATE ON forge_x_db.api_tokens TO 'forge_x_app_role';
+
 -- The roles table is fixed reference data: SELECT only (granted above).
 
 CREATE USER 'forge_x_app'@'localhost' IDENTIFIED BY 'CHANGE_ME_App#Passw0rd_2026';

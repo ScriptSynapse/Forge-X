@@ -4,7 +4,7 @@
 (function () {
   "use strict";
   var PALETTE = ["#1677FF", "#35BFFF", "#20C997", "#F4B740", "#F05252", "#91A4BA"];
-  var STATUS = { "Verified": "#20C997", "Failed": "#F05252", "Pending": "#F4B740", "In Progress": "#35BFFF",
+  var STATUS = { "Verified": "#20C997", "Failed": "#F05252", "Integrity mismatch": "#F05252", "Pending": "#F4B740", "In Progress": "#35BFFF", "Under Review": "#A78BFA",
                  "Completed": "#20C997", "Cancelled": "#4A6380" };
   var GRID = "#1A2E46", TEXT = "#91A4BA";
 

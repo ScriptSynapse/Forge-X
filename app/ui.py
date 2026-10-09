@@ -32,12 +32,15 @@ NAV_SECTIONS = (
     ("Workspace", (
         NavItem("Dashboard", "dashboard.index", "grid"),
         NavItem("Cases", "cases.list_cases", "folder2"),
-        NavItem("Evidence", "evidence.list_evidence", "device-hdd"),
+        NavItem("Evidence Vault", "evidence.list_evidence", "device-hdd"),
         NavItem("Chain of custody", "custody.index", "link-45deg"),
         NavItem("Examinations", "examinations.list_examinations", "clipboard-data"),
         NavItem("Reports", "reports.list_reports", "file-earmark-text"),
         NavItem("Analytics", "analytics.index", "bar-chart-line"),
         NavItem("Search", "search.index", "search"),
+        NavItem("Relationship graph", "graph.index", "diagram-3"),
+        NavItem("YARA rules", "yara.rules", "bug"),
+        NavItem("Developer API", "api_web.docs", "braces"),
     )),
     ("Administration", (
         NavItem("Audit logs", "audit.index", "list-check", frozenset({ADMIN, AUDITOR})),
@@ -119,6 +122,25 @@ def priority_class(value):
     return PRIORITY_CLASSES.get(value, "p-low")
 
 
+# Integrity results as shown on screen (decision U2). The database keeps its
+# values (Verified / Failed / Pending / Not Verified); only the wording differs.
+INTEGRITY_LABELS = {
+    "Verified": "Verified",
+    "Failed": "Integrity mismatch",
+    "Pending": "Pending verification",
+    "Not Verified": "Verification unavailable",
+}
+
+
+def integrity_label(value):
+    return INTEGRITY_LABELS.get(value, value)
+
+
+def dict_without(mapping, *keys):
+    """A copy of a dict without some keys (for links that remove one filter)."""
+    return {k: v for k, v in mapping.items() if k not in keys}
+
+
 def filesize(num_bytes):
     """476.9 GB style size (decimal units, as drive makers use)."""
     if num_bytes is None:
@@ -145,6 +167,8 @@ def register_template_helpers(app):
     app.add_template_filter(priority_class, "priority_class")
     app.add_template_filter(initials, "initials")
     app.add_template_filter(filesize, "filesize")
+    app.add_template_filter(integrity_label, "integrity_label")
+    app.add_template_filter(dict_without, "dict_without")
 
     @app.context_processor
     def inject_globals():

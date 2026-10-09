@@ -1,16 +1,19 @@
 """Case management routes (/cases)."""
+from datetime import date
+
 from flask import Blueprint, abort, current_app, flash, g, redirect, render_template, request, url_for
 
 from .. import audit
-from ..access import Scope, can_create_case, can_manage_case, can_register_evidence, is_admin, registers_for_any_case
+from ..access import (Scope, can_add_case_note, can_create_case, can_manage_case, can_register_evidence, is_admin,
+                      registers_for_any_case)
 from ..auth.decorators import login_required
 from ..pagination import parse_page
 from . import services
-from .forms import AssignForm, CaseForm, CloseForm, DeleteCaseForm, StatusForm
+from .forms import AssignForm, CaseForm, CloseForm, DeleteCaseForm, NoteForm, StatusForm
 
 bp = Blueprint("cases", __name__, url_prefix="/cases")
 
-TABS = ("overview", "evidence", "investigators", "examinations", "reports", "activity")
+TABS = ("overview", "evidence", "custody", "investigators", "examinations", "reports", "notes", "activity")
 
 
 def _deny(action, ref):
@@ -47,6 +50,7 @@ def list_cases():
         "cases/list.html", page=page, filters=filters, scope=scope,
         counts=services.status_counts(scope), types=services.case_types(include_inactive=True),
         statuses=services.CASE_STATUSES, priorities=services.PRIORITIES, sorts=services.SORTS,
+        sort_menu=services.SORT_MENU, investigators=services.active_investigators_for_filter(),
         can_create=can_create_case(g.user),
     )
 
@@ -67,15 +71,18 @@ def create():
         del form.lead_user_id
 
     if form.validate_on_submit():
-        lead = form.lead_user_id.data if admin else g.user["user_id"]
-        try:
-            reference = services.create_case(form.title.data, form.description.data, form.case_type_id.data,
-                                             form.priority.data, lead, g.user["user_id"])
-        except services.CaseActionError as err:
-            flash(str(err), "danger")
+        if form.due_date.data and form.due_date.data < date.today():
+            form.due_date.errors.append("The due date can't be in the past.")
         else:
-            flash(f"Case {reference} registered.", "success")
-            return redirect(url_for("cases.detail", reference=reference))
+            lead = form.lead_user_id.data if admin else g.user["user_id"]
+            try:
+                reference = services.create_case(form.title.data, form.description.data, form.case_type_id.data,
+                                                 form.priority.data, lead, g.user["user_id"], form.due_date.data)
+            except services.CaseActionError as err:
+                flash(str(err), "danger")
+            else:
+                flash(f"Case {reference} registered.", "success")
+                return redirect(url_for("cases.detail", reference=reference))
     return render_template("cases/form.html", form=form, mode="create")
 
 
@@ -104,6 +111,16 @@ def detail(reference):
         context["reports"] = services.case_reports(case["case_id"])
     if tab in ("overview", "activity"):
         context["activity"] = services.case_activity(case, limit=6 if tab == "overview" else 100)
+    if tab == "custody":
+        context["custody"] = services.case_custody(case["case_id"])
+    if tab == "notes":
+        context["notes"] = services.case_notes(case["case_id"])
+        if can_add_case_note(g.user, case, assigned_to_me):
+            note_form = NoteForm()
+            correct = request.args.get("correct", "")
+            if correct.isdigit() and any(n["note_id"] == int(correct) for n in context["notes"]):
+                note_form.corrects_note_id.data = int(correct)
+            context["note_form"] = note_form
     if manage:
         status_form = StatusForm()
         status_form.status.data = case["status"]
@@ -115,6 +132,27 @@ def detail(reference):
     if is_admin(g.user) and tab == "overview":
         context.update(delete_blockers=services.deletion_blockers(case["case_id"]), delete_form=DeleteCaseForm())
     return render_template("cases/detail.html", **context)
+
+
+@bp.post("/<reference>/notes")
+@login_required
+def add_note(reference):
+    case = _load_case(reference)
+    form = NoteForm()
+    if not form.validate_on_submit():
+        flash("Write a note of 2 to " + str(services.NOTE_MAX) + " characters.", "danger")
+        return redirect(url_for("cases.detail", reference=reference, tab="notes"))
+    try:
+        note_id = services.add_note(case, g.user, form.note_text.data, form.reference.data,
+                                    form.corrects_note_id.data or None)
+    except services.CaseActionError as err:
+        if "Only administrators" in str(err):
+            audit.record("access.denied", "Case", reference, outcome="Denied", details="add case note")
+            abort(403)
+        flash(str(err), "danger")
+    else:
+        flash(f"Note #{note_id} added. Notes can't be edited; add a correction if needed.", "success")
+    return redirect(url_for("cases.detail", reference=reference, tab="notes"))
 
 
 @bp.post("/<reference>/delete")
@@ -153,12 +191,14 @@ def edit(reference):
     if request.method == "GET":
         form.title.data, form.description.data = case["title"], case["description"]
         form.case_type_id.data, form.priority.data = case["case_type_id"], case["priority"]
+        form.due_date.data = case["due_date"]
         form.version.data = services.version_of(case)
 
     if form.validate_on_submit():
         try:
             changed = services.update_case(case["case_id"], g.user, form.title.data, form.description.data,
-                                           form.case_type_id.data, form.priority.data, form.version.data)
+                                           form.case_type_id.data, form.priority.data, form.version.data,
+                                           form.due_date.data)
         except services.CaseActionError as err:
             flash(str(err), "danger")
         else:

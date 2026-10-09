@@ -1,5 +1,6 @@
 """Evidence registry business logic. FORGE-X stores evidence METADATA and
 hashes only, never the evidence files themselves."""
+from datetime import date
 import re
 from dataclasses import dataclass
 
@@ -15,15 +16,50 @@ HASH_SOURCES = (("Computed", "Computed at acquisition (tool output)"),
 CASE_REF_RE = re.compile(r"^FX-\d{4}-\d{4}$")
 HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 
-SORTS = {
-    "newest": ("Newest collected first", "v.collected_at DESC, v.evidence_id DESC"),
-    "oldest": ("Oldest collected first", "v.collected_at ASC, v.evidence_id ASC"),
-    "code":   ("Evidence ID", "v.evidence_code ASC"),
+# Column sorting: ?sort=<column> or ?sort=-<column>. Only these fixed
+# expressions can reach ORDER BY (the key is validated against SORTS).
+SORT_COLUMNS = {
+    "code":      ("Evidence ID", "v.evidence_code"),
+    "case":      ("Case", "v.case_reference"),
+    "type":      ("Type", "v.evidence_type"),
+    "status":    ("Status", "v.current_status"),
+    "integrity": ("Integrity", "FIELD(v.integrity_status, 'Failed', 'Pending', 'Not Verified', 'Verified')"),
+    "collected": ("Collected", "v.collected_at"),
+    "custodian": ("Custodian", "v.current_custodian"),
 }
+SORTS = {}
+for _key, (_label, _expr) in SORT_COLUMNS.items():
+    SORTS[_key] = (f"{_label} (ascending)", f"{_expr} ASC, v.evidence_id DESC")
+    SORTS["-" + _key] = (f"{_label} (descending)", f"{_expr} DESC, v.evidence_id DESC")
+SORTS["newest"] = ("Newest collected first", "v.collected_at DESC, v.evidence_id DESC")
+SORTS["oldest"] = ("Oldest collected first", "v.collected_at ASC, v.evidence_id ASC")
+SORTS["code"] = ("Evidence ID", "v.evidence_code ASC")
+SORT_MENU = ("newest", "oldest", "code")
+
+# The current reference hash (the one no correction supersedes), for the list.
+CURRENT_HASH_SQL = ("(SELECT h.hash_value FROM evidence_hashes h WHERE h.evidence_id = v.evidence_id "
+                    "AND NOT EXISTS (SELECT 1 FROM evidence_hashes s WHERE s.supersedes_hash_id = h.hash_id))")
+# The most active examination state of an item: In Progress > Pending > Completed > none.
+EXAM_STATUS_SQL = ("(SELECT CASE WHEN SUM(x.status = 'In Progress') THEN 'In Progress' "
+                   "WHEN SUM(x.status = 'Pending') THEN 'Pending' WHEN SUM(x.status = 'Completed') THEN 'Completed' "
+                   "ELSE NULL END FROM examination_evidence ee JOIN examinations x ON x.examination_id = ee.examination_id "
+                   "WHERE ee.evidence_id = v.evidence_id)")
+
+# "Awaiting examination": linked to an examination that hasn't started yet.
+AWAITING_EXAMINATION_SQL = ("EXISTS (SELECT 1 FROM examination_evidence ee JOIN examinations x "
+                            "ON x.examination_id = ee.examination_id "
+                            "WHERE ee.evidence_id = v.evidence_id AND x.status = 'Pending')")
 
 
 class EvidenceActionError(Exception):
     """A refused evidence action, with a message that is safe to display."""
+
+
+def _parse_date(value):
+    try:
+        return date.fromisoformat(value) if value else None
+    except ValueError:
+        return None
 
 
 def normalise_hash(value):
@@ -50,6 +86,11 @@ class EvidenceFilters:
     status: str = ""
     integrity: str = ""
     case_reference: str = ""
+    awaiting: bool = False
+    investigator_id: int = None
+    date_from: date = None
+    date_to: date = None
+    has_file: str = ""
     sort: str = "newest"
 
     @classmethod
@@ -62,18 +103,26 @@ class EvidenceFilters:
             status=args.get("status") if args.get("status") in EVIDENCE_STATUSES else "",
             integrity=args.get("integrity") if args.get("integrity") in INTEGRITY_STATUSES else "",
             case_reference=case_raw if CASE_REF_RE.match(case_raw) else "",
+            awaiting=args.get("awaiting") == "1",
+            investigator_id=int(args.get("investigator")) if (args.get("investigator") or "").isdigit() else None,
+            date_from=_parse_date(args.get("from")), date_to=_parse_date(args.get("to")),
+            has_file=args.get("file") if args.get("file") in ("yes", "no") else "",
             sort=args.get("sort") if args.get("sort") in SORTS else "newest",
         )
 
     def as_args(self):
         args = {"q": self.q, "type": self.evidence_type_id or "", "status": self.status,
-                "integrity": self.integrity, "case": self.case_reference,
+                "integrity": self.integrity, "case": self.case_reference, "awaiting": "1" if self.awaiting else "",
+                "investigator": self.investigator_id or "", "file": self.has_file,
+                "from": self.date_from.isoformat() if self.date_from else "",
+                "to": self.date_to.isoformat() if self.date_to else "",
                 "sort": self.sort if self.sort != "newest" else ""}
         return {k: v for k, v in args.items() if v}
 
     @property
     def active(self):
-        return bool(self.q or self.evidence_type_id or self.status or self.integrity or self.case_reference)
+        return bool(self.q or self.evidence_type_id or self.status or self.integrity or self.case_reference
+                    or self.awaiting or self.investigator_id or self.date_from or self.date_to or self.has_file)
 
 
 def list_evidence(scope, filters, page, per_page):
@@ -93,18 +142,35 @@ def list_evidence(scope, filters, page, per_page):
     if filters.case_reference:
         where.append("v.case_reference = %s")
         params.append(filters.case_reference)
+    if filters.awaiting:
+        where.append(AWAITING_EXAMINATION_SQL)
+    if filters.investigator_id:
+        where.append("EXISTS (SELECT 1 FROM case_investigators fi WHERE fi.case_id = v.case_id AND fi.user_id = %s)")
+        params.append(filters.investigator_id)
+    if filters.date_from:
+        where.append("v.collected_at >= %s")
+        params.append(filters.date_from)
+    if filters.date_to:
+        where.append("v.collected_at < %s + INTERVAL 1 DAY")
+        params.append(filters.date_to)
+    if filters.has_file == "yes":
+        where.append("ef.file_id IS NOT NULL")
+    elif filters.has_file == "no":
+        where.append("ef.file_id IS NULL")
     condition = " AND ".join(where) + scope.case_filter
     all_params = tuple(params) + scope.params
     base = """
         FROM v_evidence_overview v
         JOIN evidence e ON e.evidence_id = v.evidence_id
         JOIN cases c    ON c.case_id = v.case_id
+        LEFT JOIN evidence_files ef ON ef.evidence_id = v.evidence_id
     """
     total = query_value(f"SELECT COUNT(*) {base} WHERE {condition}", all_params)
     pages = max(1, -(-total // per_page))
     page = min(page, pages)
     rows = query_all(
-        f"SELECT v.*, c.status AS case_status {base} WHERE {condition} "
+        f"SELECT v.*, c.status AS case_status, ef.media_type AS file_type, ef.file_id IS NOT NULL AS has_file, "
+        f"{CURRENT_HASH_SQL} AS current_hash, {EXAM_STATUS_SQL} AS exam_status {base} WHERE {condition} "
         f"ORDER BY {SORTS[filters.sort][1]} LIMIT %s OFFSET %s",
         all_params + (per_page, (page - 1) * per_page),
     )

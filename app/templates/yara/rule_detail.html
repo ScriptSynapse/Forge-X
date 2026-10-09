@@ -1,0 +1,57 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}{{ rule.name }}{% endblock %}
+{% block content %}
+<nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('yara.rules') }}">YARA rules</a><span aria-hidden="true">/</span><span aria-current="page">{{ rule.name }}</span></nav>
+{% call ui.page_header(rule.name, rule.description or "") %}
+  {% if rule.is_enabled %}<span class="fx-badge b-green">Enabled</span>{% else %}<span class="fx-badge b-slate">Disabled</span>{% endif %}
+  {% if can_manage %}
+  <form method="post" action="{{ url_for('yara.set_enabled', rule_id=rule.rule_id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="enable" value="{{ '0' if rule.is_enabled else '1' }}">
+    <button class="fx-btn fx-btn-secondary" type="submit">{{ "Disable" if rule.is_enabled else "Enable" }}</button></form>
+  {% endif %}
+{% endcall %}
+<div class="fx-detail-grid">
+  <section class="fx-card min-w-0" aria-labelledby="source-h">
+    <div class="fx-card-h"><h2 id="source-h">Source, version {{ shown.version_no }}</h2>
+      <span class="fx-mono fx-muted small" title="SHA-256 of this version's source">{{ shown.source_sha256[:16] }}…</span></div>
+    <pre class="fx-code" tabindex="0">{{ shown.source }}</pre>
+    <p class="fx-help px-3 pb-3 mb-0">Version {{ shown.version_no }}: {{ shown.change_note }}, {{ shown.created_at|datetime }} by {{ shown.created_by_name }}. Versions can't be edited or deleted; scans record exactly which version they used.</p>
+  </section>
+  <div class="d-flex flex-column gap-3 min-w-0">
+    <section class="fx-card"><div class="fx-card-h"><h2>Details</h2></div><div class="fx-card-b"><dl class="fx-dl">
+      <dt>Applies to</dt><dd>{{ rule.scope }}</dd><dt>Author</dt><dd>{{ rule.author or "—" }}</dd>
+      <dt>Created</dt><dd>{{ rule.created_at|datetime }} by {{ rule.created_by_name }}</dd><dt>Used in scans</dt><dd>{{ scans }}</dd></dl></div></section>
+    <section class="fx-card"><div class="fx-card-h"><h2>Versions</h2></div>
+      <ul class="fx-role-list">{% for v in versions %}<li><a class="fx-mono" href="{{ url_for('yara.rule_detail', rule_id=rule.rule_id, v=v.version_no) }}" {% if v.version_no == shown.version_no %}aria-current="true"{% endif %}>v{{ v.version_no }}</a>
+        <span class="fx-muted small">{{ v.change_note }} · {{ v.created_at|date }}</span></li>{% endfor %}</ul></section>
+    <section class="fx-card"><div class="fx-card-h"><h2>Cases</h2></div>
+      {% if rule.scope == "All cases" %}<p class="fx-card-b m-0 fx-muted">Applies to every case.</p>
+      {% else %}
+      <ul class="fx-role-list">{% for c in cases %}<li><a class="fx-mono" href="{{ url_for('cases.detail', reference=c.case_reference) }}">{{ c.case_reference }}</a>
+        {% if can_manage %}<form method="post" action="{{ url_for('yara.remove_case', rule_id=rule.rule_id, case_id=c.case_id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="fx-btn fx-btn-ghost fx-btn-sm" type="submit">Remove</button></form>{% endif %}</li>
+        {% else %}<li class="fx-muted">No cases yet: the rule doesn't run anywhere.</li>{% endfor %}</ul>
+      {% if can_manage and link_form.case_id.choices %}
+      <form method="post" action="{{ url_for('yara.add_case', rule_id=rule.rule_id) }}" class="fx-card-b border-top d-flex gap-2 align-items-end">
+        {{ link_form.hidden_tag() }}<div class="flex-grow-1">{{ ui.field(link_form.case_id) }}</div><button class="fx-btn fx-btn-secondary" type="submit">Add</button></form>
+      {% endif %}{% endif %}
+    </section>
+    {% if can_manage %}
+    <section class="fx-card"><div class="fx-card-h"><h2>Scope</h2></div>
+      <form method="post" action="{{ url_for('yara.set_scope', rule_id=rule.rule_id) }}" class="fx-card-b d-flex gap-2 align-items-end">
+        {{ scope_form.hidden_tag() }}<div class="flex-grow-1">{{ ui.field(scope_form.scope) }}</div><button class="fx-btn fx-btn-secondary" type="submit">Save</button></form></section>
+    {% endif %}
+  </div>
+</div>
+{% if can_manage %}
+<section class="fx-card" aria-labelledby="new-version-h">
+  <div class="fx-card-h"><h2 id="new-version-h">Save a new version</h2></div>
+  <form method="post" action="{{ url_for('yara.add_version', rule_id=rule.rule_id) }}" novalidate class="fx-card-b d-flex flex-column gap-3" data-fx-busy="Validating…">
+    {{ version_form.hidden_tag() }}
+    {{ ui.field(version_form.source, help=source_help, extra_class="fx-mono fx-code-input") }}
+    {{ ui.field(version_form.change_note) }}
+    <div><button class="fx-btn fx-btn-primary" type="submit">Validate and save version</button></div>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

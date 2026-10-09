@@ -28,3 +28,28 @@ a.fx-stat:hover { border-color: var(--fx-cyan); color: var(--fx-text); }
 .fx-metric-notes summary { cursor: pointer; color: var(--fx-text-2); font-size: 13px; }
 .fx-metric-notes summary:hover { color: var(--fx-text); }
 .fx-metric-notes .fx-dl { grid-template-columns: minmax(130px, 180px) minmax(0, 1fr); }
+
+/* ---- FORGE-X 2.0 Phase 1: dashboard sections ---------------------------------- */
+.fx-skeleton.fx-skel-60 { height: 14px; width: 60%; }
+.fx-skeleton.fx-skel-70 { height: 14px; width: 70%; }
+.fx-skeleton.fx-skel-75 { height: 14px; width: 75%; }
+.fx-skeleton.fx-skel-90 { height: 14px; width: 90%; }
+.fx-section-title { font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fx-text-2); margin: 4px 0 0; }
+.fx-section-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+.fx-segmented { display: inline-flex; border: 1px solid var(--fx-border); border-radius: 8px; overflow: hidden; }
+.fx-segmented a { padding: 6px 12px; font-size: 13px; color: var(--fx-text-2); text-decoration: none; border-right: 1px solid var(--fx-border); }
+.fx-segmented a:last-child { border-right: 0; }
+.fx-segmented a:hover { color: var(--fx-text); background: var(--fx-bg-2); }
+.fx-segmented a[aria-current="true"] { background: rgba(53, 191, 255, 0.14); color: var(--fx-cyan); font-weight: 600; }
+.fx-segmented a:focus-visible { outline: 2px solid var(--fx-cyan); outline-offset: -2px; }
+.fx-panel-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; }
+.fx-progress-list { list-style: none; margin: 0; padding: 12px 20px 16px; display: flex; flex-direction: column; gap: 12px; }
+.fx-progress-list li { display: grid; grid-template-columns: 96px minmax(0, 1fr) 36px; gap: 12px; align-items: center; font-size: 14px; }
+.fx-progress-list .fx-mono { text-align: right; }
+.fx-progress-track { height: 8px; border-radius: 4px; background: var(--fx-bg-2); overflow: hidden; display: block; }
+.fx-progress-track > span { display: block; height: 100%; width: 0; }
+.fx-progress-track .seg-pending { background: var(--fx-warning); }
+.fx-progress-track .seg-progress { background: var(--fx-cyan); }
+.fx-progress-track .seg-verified { background: var(--fx-success); }
+.fx-progress-track .seg-muted { background: #4A6380; }
+.fx-progress-track .seg-review { background: #A78BFA; }

@@ -1,0 +1,27 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}Developer API{% endblock %}
+{% block content %}
+{% call ui.page_header("Developer API", spec.info.description) %}
+  <a class="fx-btn fx-btn-secondary" href="{{ url_for('api.openapi') }}">OpenAPI JSON</a>
+  <a class="fx-btn fx-btn-primary" href="{{ url_for('api_web.tokens_page') }}">API tokens</a>
+{% endcall %}
+<section class="fx-card fx-card-b" aria-labelledby="start-h">
+  <h2 id="start-h" class="fx-section-title">Getting started</h2>
+  <ol class="mb-2"><li>Create a token under <a href="{{ url_for('api_web.tokens_page') }}">API tokens</a>.</li>
+    <li>Send it with every request: <span class="fx-mono">Authorization: Bearer fx_…</span></li>
+    <li>Lists are paged: <span class="fx-mono">?page=2&amp;per_page=50</span> (at most 100), and return <span class="fx-mono">data, page, per_page, total, pages</span>.</li></ol>
+  <pre class="fx-code" tabindex="0">curl -H "Authorization: Bearer fx_…" {{ request.host_url.rstrip('/') }}/api/v1/cases?status=active</pre>
+  <p class="small fx-muted mt-2 mb-0">Version 1 is read-only. Evidence file content is never returned. Errors are JSON with <span class="fx-mono">status, error, message</span>: 401 not signed in or bad token, 404 not found or not visible to you, 429 rate limit (see <span class="fx-mono">Retry-After</span>).</p>
+</section>
+<section class="fx-card" aria-labelledby="ep-h"><div class="fx-card-h"><h2 id="ep-h">Endpoints</h2><span class="fx-muted small">Generated from the routes FORGE-X actually serves.</span></div>
+  {% for path, item in spec.paths.items() %}{% set op = item.get %}
+  <div class="fx-card-b border-top">
+    <div class="d-flex flex-wrap gap-2 align-items-center"><span class="fx-badge b-cyan">GET</span><strong class="fx-mono">/api/v1{{ path }}</strong><span class="fx-muted">{{ op.summary }}</span></div>
+    {% if op.description %}<p class="small mt-2 mb-0">{{ op.description }}</p>{% endif %}
+    {% if op.parameters %}<div class="fx-table-wrap mt-2"><table class="fx-table">
+      <thead><tr><th scope="col">Parameter</th><th scope="col">In</th><th scope="col">Description</th></tr></thead>
+      <tbody>{% for p in op.parameters %}<tr><td class="fx-mono">{{ p.name }}</td><td>{{ p.in }}</td><td class="small">{{ p.description or "" }}{% if p.schema.enum %} ({{ p.schema.enum|join(", ") }}){% endif %}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+  </div>{% endfor %}
+</section>
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}API tokens{% endblock %}
+{% block content %}
+<nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('auth.account') }}">My account</a><span aria-hidden="true">/</span><span aria-current="page">API tokens</span></nav>
+{{ ui.page_header("API tokens", "Personal tokens for scripts that use the read-only FORGE-X API. A token sees exactly what you see on the website.") }}
+{% if new_token %}
+<section class="fx-alert b-green" role="status" aria-labelledby="new-token-h">
+  <i class="bi bi-key" aria-hidden="true"></i>
+  <div class="min-w-0"><strong id="new-token-h">Copy your new token now. It won't be shown again.</strong>
+    <p class="mb-2">FORGE-X keeps only a hash of it. Treat it like a password: don't commit it to Git or paste it in chats.</p>
+    <code class="fx-hash" id="fx-new-token">{{ new_token }}</code>
+    <p class="small mt-2 mb-0">Use it as <span class="fx-mono">Authorization: Bearer &lt;token&gt;</span>. See <a href="{{ url_for('api_web.docs') }}">Developer API</a>.</p></div>
+</section>
+{% endif %}
+<div class="fx-detail-grid">
+  <section class="fx-card" aria-labelledby="tokens-h"><div class="fx-card-h"><h2 id="tokens-h">Your tokens</h2></div>
+    {% if rows %}<div class="fx-table-wrap"><table class="fx-table">
+      <thead><tr><th scope="col">Name</th><th scope="col">Token</th><th scope="col">Created</th><th scope="col">Expires</th><th scope="col">Last used</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+      <tbody>{% for t in rows %}<tr><td>{{ t.name }}</td><td class="fx-mono small">fx_{{ t.token_prefix }}_…</td>
+        <td class="small text-nowrap">{{ t.created_at|datetime }}</td><td class="small text-nowrap">{{ t.expires_at|datetime }}</td>
+        <td class="small text-nowrap">{{ t.last_used_at|datetime if t.last_used_at else "Never" }}</td>
+        <td>{% if t.is_active %}<span class="fx-badge b-green">Active</span>{% elif t.revoked_at %}<span class="fx-badge b-slate">Revoked</span>{% else %}<span class="fx-badge b-slate">Expired</span>{% endif %}</td>
+        <td>{% if t.is_active %}<form method="post" action="{{ url_for('api_web.revoke', token_id=t.token_id) }}" data-fx-confirm="Revoke {{ t.name }}? Scripts using it stop working immediately.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="fx-btn fx-btn-ghost fx-btn-sm" type="submit">Revoke</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+    {% else %}{{ ui.empty_state("No tokens yet") }}{% endif %}
+  </section>
+  <section class="fx-card" aria-labelledby="create-h"><div class="fx-card-h"><h2 id="create-h">Create a token</h2></div>
+    <form method="post" novalidate class="fx-card-b d-flex flex-column gap-3">
+      {{ form.hidden_tag() }}
+      {{ ui.field(form.name, help="What it's for, e.g. \"Weekly custody export\".") }}
+      {{ ui.field(form.days, help="Tokens always expire (at most " ~ max_days ~ " days). Deactivating your account stops them at once.") }}
+      <div><button class="fx-btn fx-btn-primary" type="submit">Create token</button></div>
+    </form></section>
+</div>
+{% endblock %}

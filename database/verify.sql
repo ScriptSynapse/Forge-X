@@ -77,7 +77,7 @@ DELIMITER ;
 -- S. Structure
 -- ---------------------------------------------------------------------
 INSERT INTO verify_results (test_no, test_name, expected, actual, passed)
-SELECT 'S1', 'Base tables', '22', COUNT(*), COUNT(*) = 22
+SELECT 'S1', 'Base tables', '33', COUNT(*), COUNT(*) = 33
   FROM information_schema.TABLES WHERE TABLE_SCHEMA = 'forge_x_db' AND TABLE_TYPE = 'BASE TABLE';
 INSERT INTO verify_results (test_no, test_name, expected, actual, passed)
 SELECT 'S2', 'Tables not using InnoDB', '0', COUNT(*), COUNT(*) = 0
@@ -91,7 +91,7 @@ SELECT 'S4', 'Stored procedures / functions', '12 / 2',
   FROM information_schema.ROUTINES
  WHERE ROUTINE_SCHEMA = 'forge_x_db' AND ROUTINE_NAME NOT IN ('verify_expect_error', 'verify_capture_error');
 INSERT INTO verify_results (test_no, test_name, expected, actual, passed)
-SELECT 'S5', 'Triggers', '22', COUNT(*), COUNT(*) = 22 FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = 'forge_x_db';
+SELECT 'S5', 'Triggers', '41', COUNT(*), COUNT(*) = 41 FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = 'forge_x_db';
 INSERT INTO verify_results (test_no, test_name, expected, actual, passed)
 SELECT 'S6', 'Foreign keys with CASCADE / SET NULL', '0', COUNT(*), COUNT(*) = 0
   FROM information_schema.REFERENTIAL_CONSTRAINTS

@@ -1,10 +1,10 @@
 """Case forms (Flask-WTF adds a CSRF token to each)."""
 from flask_wtf import FlaskForm
-from wtforms import BooleanField, HiddenField, SelectField, StringField, TextAreaField
-from wtforms.validators import DataRequired, Length
+from wtforms import BooleanField, DateField, HiddenField, IntegerField, SelectField, StringField, TextAreaField
+from wtforms.validators import DataRequired, Length, Optional
 
 from ..auth.forms import strip
-from .services import EDITABLE_STATUSES, PRIORITIES
+from .services import EDITABLE_STATUSES, NOTE_MAX, PRIORITIES
 
 
 class CaseForm(FlaskForm):
@@ -18,6 +18,7 @@ class CaseForm(FlaskForm):
                                 validators=[DataRequired("Describe what happened and what the lab has been asked to do."),
                                             Length(min=10, max=5000)])
     lead_user_id = SelectField("Lead investigator", coerce=int)
+    due_date = DateField("Due date", validators=[Optional()])
     version = HiddenField()
 
 
@@ -42,3 +43,11 @@ class DeleteCaseForm(FlaskForm):
                            validators=[DataRequired("Give a reason."), Length(min=10, max=300)])
     confirm_reference = StringField("Type the case reference to confirm", filters=[strip],
                                     validators=[DataRequired("Type the case reference.")])
+
+
+class NoteForm(FlaskForm):
+    """A case note (append-only). To fix a note, add a correction that refers to it."""
+    note_text = TextAreaField("Note", filters=[strip],
+                              validators=[DataRequired("Write the note."), Length(min=2, max=NOTE_MAX)])
+    reference = StringField("Reference", filters=[strip], validators=[Optional(), Length(max=255)])
+    corrects_note_id = IntegerField("Corrects note", validators=[Optional()])

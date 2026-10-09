@@ -4,6 +4,7 @@
 {% block content %}
 {% call ui.page_header("My account", "Your profile, roles and recent sign-ins.") %}
   <a class="fx-btn fx-btn-secondary" href="{{ url_for('auth.change_password') }}">Change password</a>
+  <a class="fx-btn fx-btn-ghost" href="{{ url_for('api_web.tokens_page') }}">API tokens</a>
 {% endcall %}
 <div class="fx-two-col">
   <section class="fx-card">

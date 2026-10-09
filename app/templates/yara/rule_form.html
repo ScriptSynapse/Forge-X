@@ -1,0 +1,16 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}New YARA rule{% endblock %}
+{% block content %}
+<nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('yara.rules') }}">YARA rules</a><span aria-hidden="true">/</span><span aria-current="page">New rule</span></nav>
+{{ ui.page_header("New YARA rule", "Saved as version 1 after it compiles in the isolated worker.") }}
+{% include "yara/_availability.html" %}
+<form method="post" novalidate class="fx-card fx-card-b d-flex flex-column gap-3" data-fx-busy="Validating…">
+  {{ form.hidden_tag() }}
+  <div class="fx-form-grid">{{ ui.field(form.name) }}{{ ui.field(form.scope, help="Selected cases: choose the cases on the rule's page after saving.") }}</div>
+  <div class="fx-form-grid">{{ ui.field(form.author) }}{{ ui.field(form.description) }}</div>
+  {{ ui.field(form.source, help=source_help, extra_class="fx-mono fx-code-input") }}
+  <div class="d-flex gap-2"><button class="fx-btn fx-btn-primary" type="submit">Validate and save</button>
+    <a class="fx-btn fx-btn-ghost" href="{{ url_for('yara.rules') }}">Cancel</a></div>
+</form>
+{% endblock %}

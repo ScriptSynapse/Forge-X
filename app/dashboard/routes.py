@@ -1,7 +1,8 @@
 """Dashboard page and the JSON endpoints its charts load from."""
-from flask import Blueprint, abort, g, jsonify, render_template
+from flask import Blueprint, abort, g, jsonify, render_template, request
 
-from ..access import can_create_case, can_register_evidence
+from ..access import can_create_case, can_register_evidence, is_admin
+from ..examinations.services import creatable_cases
 from ..auth.decorators import login_required
 from . import services
 
@@ -27,16 +28,25 @@ ACTION_LABELS = {
 @login_required
 def index():
     scope = services.Scope(g.user)
+    period = services.parse_period(request.args.get("period"))
+    period_label, days = services.PERIODS[period]
     return render_template(
         "dashboard/index.html",
         scope=scope,
         stats=services.summary(scope),
         attention=services.attention(scope),
+        work=services.work_in_progress(scope),
+        period=period, periods=services.PERIODS, period_label=period_label,
+        in_period=services.activity_in_period(scope, days),
+        custody=services.recent_custody(scope, days),
+        alerts=services.integrity_alerts(scope),
         activity=services.recent_activity(scope),
         action_labels=ACTION_LABELS,
         as_of=services.server_time(),
         can_create_case=can_create_case(g.user),
         can_register_evidence=can_register_evidence(g.user),
+        # Same rule as the examinations page: an open case this user may add examinations to.
+        can_create_examination=bool(creatable_cases(g.user, is_admin(g.user))),
     )
 
 

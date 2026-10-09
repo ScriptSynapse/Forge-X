@@ -1,0 +1,4 @@
+{% if not available.ok %}
+<div class="fx-alert b-amber" role="status"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
+  <div><strong>YARA scanning is unavailable.</strong><p>{{ available.error }} Rules can't be validated or run until it's installed (<span class="fx-mono">pip install yara-x psutil</span>, then restart FORGE-X).</p></div></div>
+{% endif %}

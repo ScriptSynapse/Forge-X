@@ -2,13 +2,13 @@
 {% import "macros/ui.html" as ui %}
 {% block title %}{{ title }}: {{ item.evidence_code }}{% endblock %}
 {% block content %}
-<nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('evidence.list_evidence') }}">Evidence</a><span aria-hidden="true">/</span>
+<nav class="fx-crumb" aria-label="Breadcrumb"><a href="{{ url_for('evidence.list_evidence') }}">Evidence Vault</a><span aria-hidden="true">/</span>
   <a class="fx-mono" href="{{ url_for('evidence.detail', code=item.evidence_code, tab='hashes') }}">{{ item.evidence_code }}</a><span aria-hidden="true">/</span><span aria-current="page">{{ title }}</span></nav>
 {{ ui.page_header(title, item.description) }}
 
 {% if result %}
 <section class="fx-card fx-verify-result {{ 'is-match' if result.outcome == 'Verified' else 'is-mismatch' }}" aria-live="polite">
-  <div class="fx-card-h"><h2>{{ "Hashes match" if result.outcome == "Verified" else "Hashes do NOT match" }}</h2>{{ ui.badge(result.outcome) }}</div>
+  <div class="fx-card-h"><h2>{{ "Hashes match" if result.outcome == "Verified" else "Hashes do NOT match" }}</h2>{{ ui.integrity(result.outcome) }}</div>
   <div class="fx-card-b d-flex flex-column gap-3">
     <div><span class="small fx-muted">Current reference SHA-256</span><code class="fx-hash">{{ result.reference }}</code></div>
     <div><span class="small fx-muted">Computed now{% if result.file_name %} from {{ result.file_name }} ({{ result.size|filesize }}){% endif %}</span><code class="fx-hash">{{ result.computed }}</code></div>

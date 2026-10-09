@@ -1,0 +1,63 @@
+{% extends "layouts/app.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title %}Relationship graph{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/graph.js') }}" defer></script>{% endblock %}
+{% block content %}
+{{ ui.page_header("Relationship graph", "Links recorded in FORGE-X, starting from one case. " ~ scope.label ~ ".") }}
+<form method="get" action="{{ url_for('graph.index') }}" class="fx-card fx-card-b fx-filter-bar" role="search">
+  <div class="fx-filter-grow"><label class="fx-label" for="g-case">Case</label>
+    <select id="g-case" name="case" class="fx-input"><option value="">Choose a case…</option>
+      {% for c in cases %}<option value="{{ c.case_reference }}" {% if case and case.case_reference == c.case_reference %}selected{% endif %}>{{ c.case_reference }}  {{ c.title }}</option>{% endfor %}</select></div>
+  <div><label class="fx-label" for="g-hashes">Hashes</label>
+    <select id="g-hashes" name="hashes" class="fx-input">
+      <option value="shared" {% if hash_mode == 'shared' %}selected{% endif %}>Only hashes shared by 2+ items</option>
+      <option value="all" {% if hash_mode == 'all' %}selected{% endif %}>Every hash</option></select></div>
+  <div class="fx-filter-actions"><button type="submit" class="fx-btn fx-btn-primary">Show graph</button></div>
+</form>
+
+{% if case %}
+<div id="fx-graph" class="fx-graph" data-case-url="{{ url_for('graph.case_data', reference=case.case_reference) }}"
+     data-expand-url="{{ url_for('graph.expand') }}" data-hash-mode="{{ hash_mode }}" data-focus="case:{{ case.case_id }}">
+  <div class="fx-graph-main fx-card">
+    <div class="fx-graph-toolbar">
+      <label class="visually-hidden" for="fx-graph-search">Find a node</label>
+      <input id="fx-graph-search" class="fx-input" type="search" placeholder="Find a node (Enter to jump)" autocomplete="off">
+      <div class="d-flex gap-1" role="group" aria-label="Zoom">
+        <button type="button" class="fx-btn fx-btn-ghost fx-btn-sm" data-graph-zoom="in" aria-label="Zoom in"><i class="bi bi-zoom-in" aria-hidden="true"></i></button>
+        <button type="button" class="fx-btn fx-btn-ghost fx-btn-sm" data-graph-zoom="out" aria-label="Zoom out"><i class="bi bi-zoom-out" aria-hidden="true"></i></button>
+        <button type="button" class="fx-btn fx-btn-ghost fx-btn-sm" data-graph-zoom="fit">Fit</button>
+      </div>
+    </div>
+    <svg class="fx-graph-canvas" role="group" aria-label="Relationship graph for {{ case.case_reference }}. Tab to a node, Enter to select it, E to expand it; plus, minus and arrow keys zoom and pan."></svg>
+    <p id="fx-graph-status" class="fx-graph-status" role="status" aria-live="polite">Loading…</p>
+  </div>
+  <aside class="fx-graph-side">
+    <section class="fx-card fx-card-b" aria-labelledby="g-sel-h"><h2 id="g-sel-h" class="fx-section-title">Selected</h2>
+      <div id="fx-graph-panel"><p class="fx-muted small m-0">Select a node to see its details. Double-click (or press E) to expand it.</p></div></section>
+    <section class="fx-card fx-card-b" aria-labelledby="g-show-h"><h2 id="g-show-h" class="fx-section-title">Show</h2>
+      <fieldset class="fx-graph-filters"><legend class="visually-hidden">Node types</legend>
+        {% for t, label in [("case","Cases"),("evidence","Evidence"),("exam","Examinations"),("report","Reports"),("user","Investigators"),("artifact","Artifacts"),("hash","SHA-256 hashes"),("rule","YARA rules")] %}
+        <label class="fx-check"><input type="checkbox" checked data-graph-type="{{ t }}"> <span class="fx-dot t-{{ t }}" aria-hidden="true"></span>{{ label }}</label>
+        {% endfor %}</fieldset>
+      <fieldset class="fx-graph-filters mt-3"><legend class="fx-label">Links</legend>
+        <label class="fx-check"><input type="checkbox" checked data-graph-kind="recorded"> <span class="fx-line k-recorded" aria-hidden="true"></span>Recorded link</label>
+        <label class="fx-check"><input type="checkbox" checked data-graph-kind="result"> <span class="fx-line k-result" aria-hidden="true"></span>Scan result (YARA match)</label>
+        <label class="fx-check"><input type="checkbox" checked data-graph-kind="identity"> <span class="fx-line k-identity" aria-hidden="true"></span>Identical SHA-256</label>
+      </fieldset></section>
+    <section class="fx-card fx-card-b small fx-muted" aria-labelledby="g-about-h"><h2 id="g-about-h" class="fx-section-title">What the graph shows</h2>
+      <p>Only relationships stored in FORGE-X: assignments, evidence in cases, examinations, citations, artifacts, reference hashes, and matches from each item's latest completed YARA scan.</p>
+      <p>Nothing is suggested or inferred. Items sharing a SHA-256 have identical bytes, which on its own says nothing about intent. A YARA match is an indicator for an examiner, not a conclusion.</p>
+      <p class="m-0">Records in cases you can't see never appear. The graph stops at {{ max_nodes }} nodes; expand single nodes to go further.</p></section>
+  </aside>
+</div>
+<details class="fx-card fx-graph-listing">
+  <summary class="fx-card-b">Relationships as a list</summary>
+  <div class="fx-table-wrap"><table class="fx-table"><thead><tr><th scope="col">From</th><th scope="col">Relationship</th><th scope="col">To</th><th scope="col">Kind</th></tr></thead>
+    <tbody id="fx-graph-list-body"></tbody></table></div>
+</details>
+{% elif cases %}
+{{ ui.empty_state("Choose a case", "The graph starts from one case; expand any node to follow its links further.") }}
+{% else %}
+{{ ui.empty_state("No cases to show", "You don't have access to any cases yet.") }}
+{% endif %}
+{% endblock %}

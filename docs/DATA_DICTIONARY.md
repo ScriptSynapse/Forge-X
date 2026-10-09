@@ -1,7 +1,7 @@
 # FORGE-X Data Dictionary
 
 Generated from `database/schema.sql` by `tools/make_data_dictionary.py`; do not edit by hand.
-22 tables, all InnoDB. Every foreign key is ON DELETE RESTRICT ON UPDATE RESTRICT.
+33 tables, all InnoDB. Every foreign key is ON DELETE RESTRICT ON UPDATE RESTRICT.
 
 **Key:** PK primary key, FK foreign key, UK unique, NN not null.
 
@@ -19,15 +19,26 @@ Generated from `database/schema.sql` by `tools/make_data_dictionary.py`; do not 
 - [`reference_sequences`](#reference_sequences)
 - [`cases`](#cases)
 - [`case_investigators`](#case_investigators)
+- [`case_notes`](#case_notes)
 - [`evidence`](#evidence)
+- [`evidence_files`](#evidence_files)
+- [`evidence_file_locations`](#evidence_file_locations)
 - [`evidence_hashes`](#evidence_hashes)
 - [`hash_verifications`](#hash_verifications)
 - [`chain_of_custody`](#chain_of_custody)
 - [`examinations`](#examinations)
 - [`examination_evidence`](#examination_evidence)
+- [`examination_artifacts`](#examination_artifacts)
 - [`forensic_reports`](#forensic_reports)
 - [`report_versions`](#report_versions)
 - [`report_examinations`](#report_examinations)
+- [`yara_rules`](#yara_rules)
+- [`yara_rule_versions`](#yara_rule_versions)
+- [`yara_rule_cases`](#yara_rule_cases)
+- [`yara_scans`](#yara_scans)
+- [`yara_scan_rules`](#yara_scan_rules)
+- [`yara_matches`](#yara_matches)
+- [`api_tokens`](#api_tokens)
 - [`audit_logs`](#audit_logs)
 
 ## roles
@@ -189,6 +200,7 @@ Gap-free yearly counters for business codes
 | `case_type_id` | SMALLINT UNSIGNED | FK → `case_types.case_type_id` | NN |  |
 | `priority` | ENUM('Low','Medium','High','Critical') |  | NN | Default 'Medium' |
 | `status` | ENUM('Open','In Progress','On Hold','Closed') |  | NN | Default 'Open' |
+| `due_date` | DATE |  | NULL |  |
 | `created_by` | INT UNSIGNED | FK → `users.user_id` | NN |  |
 | `created_at` | DATETIME |  | NN | Default CURRENT_TIMESTAMP |
 | `updated_at` | DATETIME |  | NN | Default CURRENT_TIMESTAMP; Updated automatically |
@@ -200,6 +212,7 @@ Gap-free yearly counters for business codes
 - `chk_cases_reference`: `case_reference REGEXP '^FX-[0-9]{4}-[0-9]{4}$'`
 - `chk_cases_closed`: `(status = 'Closed' AND closed_at IS NOT NULL AND closure_summary IS NOT NULL) OR (status <> 'Closed' AND closed_at IS NULL)`
 - `chk_cases_closed_after`: `closed_at IS NULL OR closed_at >= created_at`
+- `chk_cases_due_after_created`: `due_date IS NULL OR due_date >= DATE(created_at)`
 
 ## case_investigators
 
@@ -214,6 +227,24 @@ Cases <-> investigators (many-to-many)
 | `assigned_by` | INT UNSIGNED | FK → `users.user_id` | NN |  |
 | `assigned_at` | DATETIME |  | NN | Default CURRENT_TIMESTAMP |
 | `lead_case_id` | INT UNSIGNED | UK | Generated | Generated (stored): `(IF(is_lead = TRUE, case_id, NULL))` |
+
+## case_notes
+
+Case_notes: notes and references on a case (FORGE-X 2.0, decision U5). Append-only (triggers trg_cn_*); corrections are linked new notes.
+
+| Column | Type | Keys | Null | Notes |
+| --- | --- | --- | --- | --- |
+| `note_id` | INT UNSIGNED | PK | NN | AUTO_INCREMENT |
+| `case_id` | INT UNSIGNED | FK → `cases.case_id` | NN |  |
+| `note_text` | VARCHAR(4000) |  | NN |  |
+| `reference` | VARCHAR(255) |  | NULL |  |
+| `corrects_note_id` | INT UNSIGNED | FK → `case_notes.note_id` | NULL |  |
+| `author_id` | INT UNSIGNED | FK → `users.user_id` | NN |  |
+| `created_at` | DATETIME |  | NN | Default CURRENT_TIMESTAMP |
+
+**CHECK constraints**
+
+- `chk_cn_text`: `CHAR_LENGTH(TRIM(note_text)) >= 2`
 
 ## evidence
 
@@ -242,6 +273,47 @@ Metadata only, never the evidence files themselves
 
 - `chk_ev_code`: `evidence_code REGEXP '^FX-EV-[0-9]{4}-[0-9]{5}$'`
 - `chk_ev_dates`: `collected_at <= registered_at`
+
+## evidence_files
+
+Evidence_files: the stored copy of an evidence item (FORGE-X 2.0, U1). One file per item; the file itself is on disk under a generated object ID. Append-only (triggers trg_ef_*).
+
+| Column | Type | Keys | Null | Notes |
+| --- | --- | --- | --- | --- |
+| `file_id` | INT UNSIGNED | PK | NN | AUTO_INCREMENT |
+| `evidence_id` | INT UNSIGNED | FK → `evidence.evidence_id`; UK | NN |  |
+| `object_id` | CHAR(36) | UK | NN |  |
+| `original_name` | VARCHAR(255) |  | NN |  |
+| `media_type` | VARCHAR(100) |  | NN |  |
+| `size_bytes` | BIGINT UNSIGNED |  | NN |  |
+| `stored_by` | INT UNSIGNED | FK → `users.user_id` | NN |  |
+| `stored_at` | DATETIME |  | NN | Default CURRENT_TIMESTAMP |
+
+**CHECK constraints**
+
+- `chk_ef_object`: `object_id REGEXP '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'`
+- `chk_ef_sha256`: `sha256 REGEXP '^[0-9a-f]{64}$'`
+- `chk_ef_size`: `size_bytes > 0`
+
+## evidence_file_locations
+
+Evidence_file_locations: where each stored file is (FORGE-X 2.0 Phase 9). Latest row = current location; no row = local disk. Append-only.
+
+| Column | Type | Keys | Null | Notes |
+| --- | --- | --- | --- | --- |
+| `location_id` | INT UNSIGNED | PK | NN | AUTO_INCREMENT |
+| `file_id` | INT UNSIGNED | FK → `evidence_files.file_id` | NN |  |
+| `backend` | ENUM('local','s3') |  | NN |  |
+| `container` | VARCHAR(255) |  | NULL |  |
+| `note` | VARCHAR(255) |  | NN |  |
+| `moved_by` | INT UNSIGNED | FK → `users.user_id` | NN |  |
+| `moved_at` | DATETIME |  | NN | Default CURRENT_TIMESTAMP |
+
+**CHECK constraints**
+
+- `chk_efl_before`: `sha256_before IS NULL OR sha256_before REGEXP '^[0-9a-f]{64}$'`
+- `chk_efl_after`: `sha256_after REGEXP '^[0-9a-f]{64}$'`
+- `chk_efl_verified`: `sha256_before IS NULL OR sha256_before = sha256_after`
 
 ## evidence_hashes
 
@@ -277,7 +349,7 @@ Every comparison (append-only)
 | `hash_id` | INT UNSIGNED | FK → `evidence_hashes.hash_id` | NN |  |
 | `computed_hash` | CHAR(64) |  | NN |  |
 | `result` | ENUM('Verified','Failed') |  | NN | Default 'Failed' |
-| `method` | ENUM('Sample file','Manual entry') |  | NN |  |
+| `method` | ENUM('Sample file','Manual entry','Stored file') |  | NN |  |
 | `sample_file_name` | VARCHAR(255) |  | NULL |  |
 | `sample_size_bytes` | BIGINT UNSIGNED |  | NULL |  |
 | `notes` | VARCHAR(500) |  | NULL |  |
@@ -287,7 +359,7 @@ Every comparison (append-only)
 **CHECK constraints**
 
 - `chk_hv_format`: `computed_hash REGEXP '^[0-9a-f]{64}$'`
-- `chk_hv_method`: `(method = 'Sample file' AND sample_file_name IS NOT NULL) OR (method = 'Manual entry' AND notes IS NOT NULL)`
+- `chk_hv_method`: `(method = 'Sample file' AND sample_file_name IS NOT NULL) OR (method = 'Manual entry' AND notes IS NOT NULL) OR (method = 'Stored file' AND sample_file_name IS NOT NULL)`
 
 ## chain_of_custody
 
@@ -327,13 +399,18 @@ Every handling event (append-only)
 | `case_id` | INT UNSIGNED | FK → `cases.case_id` | NN |  |
 | `examination_type_id` | SMALLINT UNSIGNED | FK → `examination_types.examination_type_id` | NN |  |
 | `examiner_id` | INT UNSIGNED | FK → `users.user_id` | NN |  |
-| `status` | ENUM('Pending','In Progress','Completed','Cancelled') |  | NN | Default 'Pending' |
+| `status` | ENUM('Pending','In Progress','Completed','Cancelled','Under Review') |  | NN | Default 'Pending' |
 | `due_date` | DATE |  | NULL |  |
 | `started_at` | DATETIME |  | NULL |  |
+| `submitted_at` | DATETIME |  | NULL |  |
 | `completed_at` | DATETIME |  | NULL |  |
+| `reviewed_by` | INT UNSIGNED | FK → `users.user_id` | NULL |  |
+| `reviewed_at` | DATETIME |  | NULL |  |
+| `review_note` | VARCHAR(500) |  | NULL |  |
 | `tools_methods` | TEXT |  | NULL |  |
 | `observations` | TEXT |  | NULL |  |
 | `findings` | TEXT |  | NULL |  |
+| `conclusion` | TEXT |  | NULL |  |
 | `limitations` | TEXT |  | NULL |  |
 | `cancel_reason` | VARCHAR(500) |  | NULL |  |
 | `created_at` | DATETIME |  | NN | Default CURRENT_TIMESTAMP |
@@ -341,8 +418,9 @@ Every handling event (append-only)
 
 **CHECK constraints**
 
+- `chk_exam_independent`: `reviewed_by IS NULL OR reviewed_by <> examiner_id`
 - `chk_exam_code`: `examination_code REGEXP '^EX-[0-9]{4}-[0-9]{4}$'`
-- `chk_exam_state`: `(status = 'Pending' AND started_at IS NULL AND completed_at IS NULL) OR (status = 'In Progress' AND started_at IS NOT NULL AND completed_at IS NULL) OR (status = 'Completed' AND started_at IS NOT NULL AND completed_at IS NOT NULL AND completed_at >= started_at AND tools_methods IS NOT NULL AND findings IS NOT NULL) OR (status = 'Cancelled' AND cancel_reason IS NOT NULL)`
+- `chk_exam_state`: `(status = 'Pending' AND started_at IS NULL AND completed_at IS NULL) OR (status = 'In Progress' AND started_at IS NOT NULL AND completed_at IS NULL) OR (status = 'Under Review' AND started_at IS NOT NULL AND completed_at IS NULL AND submitted_at IS NOT NULL AND tools_methods IS NOT NULL AND findings IS NOT NULL) OR (status = 'Completed' AND started_at IS NOT NULL AND completed_at IS NOT NULL AND completed_at >= started_at AND tools_methods IS NOT NULL AND findings IS NOT NULL) OR (status = 'Cancelled' AND cancel_reason IS NOT NULL)`
 
 ## examination_evidence
 
@@ -353,6 +431,27 @@ Examinations <-> evidence (many-to-many)
 | `examination_id` | INT UNSIGNED | PK; FK → `examinations.examination_id` | NN |  |
 | `evidence_id` | INT UNSIGNED | PK; FK → `evidence.evidence_id` | NN |  |
 | `linked_at` | DATETIME |  | NN | Default CURRENT_TIMESTAMP |
+
+## examination_artifacts
+
+Examination_artifacts: artifacts found during an examination (FORGE-X 2.0, U3). Append-only (triggers trg_art_*).
+
+| Column | Type | Keys | Null | Notes |
+| --- | --- | --- | --- | --- |
+| `artifact_id` | INT UNSIGNED | PK | NN | AUTO_INCREMENT |
+| `examination_id` | INT UNSIGNED | FK → `examinations.examination_id` | NN |  |
+| `evidence_id` | INT UNSIGNED | FK → `evidence.evidence_id` | NULL |  |
+| `artifact_type` | ENUM('File','Registry entry','Log entry','Network indicator','Email','Other') |  | NN |  |
+| `description` | VARCHAR(500) |  | NN |  |
+| `location` | VARCHAR(500) |  | NULL |  |
+| `corrects_artifact_id` | INT UNSIGNED | FK → `examination_artifacts.artifact_id` | NULL |  |
+| `recorded_by` | INT UNSIGNED | FK → `users.user_id` | NN |  |
+| `recorded_at` | DATETIME |  | NN | Default CURRENT_TIMESTAMP |
+
+**CHECK constraints**
+
+- `chk_art_sha256`: `sha256 IS NULL OR sha256 REGEXP '^[0-9a-f]{64}$'`
+- `chk_art_text`: `CHAR_LENGTH(TRIM(description)) >= 2`
 
 ## forensic_reports
 
@@ -410,6 +509,118 @@ Reports <-> examinations (many-to-many)
 | `report_id` | INT UNSIGNED | PK; FK → `forensic_reports.report_id` | NN |  |
 | `examination_id` | INT UNSIGNED | PK; FK → `examinations.examination_id` | NN |  |
 | `linked_at` | DATETIME |  | NN | Default CURRENT_TIMESTAMP |
+
+## yara_rules
+
+YARA rule library and scans (FORGE-X 2.0 Phase 7). History tables are append-only (triggers trg_yrv_*, trg_ys_*, trg_ysr_*, trg_ym_*).
+
+| Column | Type | Keys | Null | Notes |
+| --- | --- | --- | --- | --- |
+| `rule_id` | INT UNSIGNED | PK | NN | AUTO_INCREMENT |
+| `name` | VARCHAR(100) | UK | NN |  |
+| `description` | VARCHAR(500) |  | NULL |  |
+| `author` | VARCHAR(100) |  | NULL |  |
+| `scope` | ENUM('All cases','Selected cases') |  | NN | Default 'All cases' |
+| `is_enabled` | BOOLEAN |  | NN | Default TRUE |
+| `created_by` | INT UNSIGNED | FK → `users.user_id` | NN |  |
+| `created_at` | DATETIME |  | NN | Default CURRENT_TIMESTAMP |
+| `updated_at` | DATETIME |  | NN | Default CURRENT_TIMESTAMP; Updated automatically |
+
+**CHECK constraints**
+
+- `chk_yr_name`: `name REGEXP '^[A-Za-z0-9 ._-]{2,100}$'`
+
+## yara_rule_versions
+
+| Column | Type | Keys | Null | Notes |
+| --- | --- | --- | --- | --- |
+| `version_id` | INT UNSIGNED | PK | NN | AUTO_INCREMENT |
+| `rule_id` | INT UNSIGNED | FK → `yara_rules.rule_id`; UK (uq_yrv_rule_version) | NN |  |
+| `version_no` | SMALLINT UNSIGNED | UK (uq_yrv_rule_version) | NN |  |
+| `source` | MEDIUMTEXT |  | NN |  |
+| `change_note` | VARCHAR(255) |  | NN |  |
+| `created_by` | INT UNSIGNED | FK → `users.user_id` | NN |  |
+| `created_at` | DATETIME |  | NN | Default CURRENT_TIMESTAMP |
+
+**CHECK constraints**
+
+- `chk_yrv_sha256`: `source_sha256 REGEXP '^[0-9a-f]{64}$'`
+- `chk_yrv_version`: `version_no >= 1`
+
+## yara_rule_cases
+
+| Column | Type | Keys | Null | Notes |
+| --- | --- | --- | --- | --- |
+| `rule_id` | INT UNSIGNED | PK; FK → `yara_rules.rule_id` | NN |  |
+| `case_id` | INT UNSIGNED | PK; FK → `cases.case_id` | NN |  |
+| `added_by` | INT UNSIGNED | FK → `users.user_id` | NN |  |
+| `added_at` | DATETIME |  | NN | Default CURRENT_TIMESTAMP |
+
+## yara_scans
+
+| Column | Type | Keys | Null | Notes |
+| --- | --- | --- | --- | --- |
+| `scan_id` | INT UNSIGNED | PK | NN | AUTO_INCREMENT |
+| `evidence_id` | INT UNSIGNED | FK → `evidence.evidence_id` | NN |  |
+| `file_id` | INT UNSIGNED | FK → `evidence_files.file_id` | NN |  |
+| `status` | ENUM('Completed','Failed','Timed out','Memory limit') |  | NN |  |
+| `scanner_version` | VARCHAR(40) |  | NULL |  |
+| `hash_matches` | BOOLEAN |  | NULL |  |
+| `rules_count` | SMALLINT UNSIGNED |  | NN |  |
+| `matched_count` | SMALLINT UNSIGNED |  | NN | Default 0 |
+| `duration_ms` | INT UNSIGNED |  | NULL |  |
+| `limits_note` | VARCHAR(255) |  | NULL |  |
+| `error_message` | VARCHAR(500) |  | NULL |  |
+| `requested_by` | INT UNSIGNED | FK → `users.user_id` | NN |  |
+| `started_at` | DATETIME |  | NN |  |
+| `finished_at` | DATETIME |  | NN |  |
+
+**CHECK constraints**
+
+- `chk_ys_sha256`: `file_sha256 IS NULL OR file_sha256 REGEXP '^[0-9a-f]{64}$'`
+- `chk_ys_times`: `finished_at >= started_at`
+- `chk_ys_result`: `(status = 'Completed' AND error_message IS NULL AND file_sha256 IS NOT NULL) OR (status <> 'Completed' AND error_message IS NOT NULL AND matched_count = 0)`
+
+## yara_scan_rules
+
+| Column | Type | Keys | Null | Notes |
+| --- | --- | --- | --- | --- |
+| `scan_id` | INT UNSIGNED | PK; FK → `yara_scans.scan_id` | NN |  |
+| `version_id` | INT UNSIGNED | PK; FK → `yara_rule_versions.version_id` | NN |  |
+
+## yara_matches
+
+| Column | Type | Keys | Null | Notes |
+| --- | --- | --- | --- | --- |
+| `match_id` | INT UNSIGNED | PK | NN | AUTO_INCREMENT |
+| `scan_id` | INT UNSIGNED | FK → `yara_scans.scan_id` | NN |  |
+| `version_id` | INT UNSIGNED | FK → `yara_rule_versions.version_id` | NN |  |
+| `rule_identifier` | VARCHAR(128) |  | NN |  |
+| `tags` | VARCHAR(500) |  | NULL |  |
+| `metadata_json` | TEXT |  | NULL |  |
+| `patterns_json` | MEDIUMTEXT |  | NULL |  |
+
+## api_tokens
+
+Api_tokens: personal tokens for the read-only REST API (FORGE-X 2.0 Phase 10). Only the SHA-256 is stored; expiry at most 90 days.
+
+| Column | Type | Keys | Null | Notes |
+| --- | --- | --- | --- | --- |
+| `token_id` | INT UNSIGNED | PK | NN | AUTO_INCREMENT |
+| `user_id` | INT UNSIGNED | FK → `users.user_id` | NN |  |
+| `name` | VARCHAR(60) |  | NN |  |
+| `token_prefix` | CHAR(8) |  | NN |  |
+| `token_hash` | CHAR(64) | UK | NN |  |
+| `created_at` | DATETIME |  | NN | Default CURRENT_TIMESTAMP |
+| `expires_at` | DATETIME |  | NN |  |
+| `last_used_at` | DATETIME |  | NULL |  |
+| `revoked_at` | DATETIME |  | NULL |  |
+
+**CHECK constraints**
+
+- `chk_api_token_hash`: `token_hash REGEXP '^[0-9a-f]{64}$'`
+- `chk_api_token_expiry`: `expires_at > created_at AND expires_at <= created_at + INTERVAL 90 DAY`
+- `chk_api_token_name`: `CHAR_LENGTH(TRIM(name)) >= 2`
 
 ## audit_logs
 
