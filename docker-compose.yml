@@ -1,0 +1,104 @@
+# FORGE-X with Docker Compose (FORGE-X 2.0 Phase 11).
+#
+#   copy .env.docker.example .env.docker      (then set the passwords and secret key)
+#   docker compose --env-file .env.docker up -d --build
+#   docker compose --env-file .env.docker exec app flask --app run create-admin paulson
+#   open http://127.0.0.1:8000
+#
+# Optional MinIO object storage:  add  --profile s3  to the commands (see docs/DEPLOYMENT_GUIDE.md).
+#
+# Network isolation: MySQL and MinIO are only on the internal "backend" network
+# (no published ports, no route out). The app is the only service on "frontend",
+# and its port is published to 127.0.0.1 only.
+
+name: forge-x
+
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${FORGE_X_DB_ROOT_PASSWORD:?set FORGE_X_DB_ROOT_PASSWORD in .env.docker}
+      FORGE_X_DB_APP_PASSWORD: ${FORGE_X_DB_APP_PASSWORD:?set FORGE_X_DB_APP_PASSWORD in .env.docker}
+      TZ: Asia/Kolkata
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./database:/forge-x-db:ro
+      - ./docker:/forge-x-docker:ro
+      - ./docker/mysql-init:/docker-entrypoint-initdb.d:ro
+    networks: [backend]
+    healthcheck:
+      # Over TCP and as the application account: true only once the init scripts have finished
+      # (the temporary init server doesn't listen on TCP) and the app can really log in.
+      test: ["CMD-SHELL", "mysql -h 127.0.0.1 -uforge_x_app -p\"$$FORGE_X_DB_APP_PASSWORD\" -e 'SELECT 1 FROM forge_x_db.roles LIMIT 1' >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  app:
+    build: .
+    image: forge-x:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      FORGE_X_SECRET_KEY: ${FORGE_X_SECRET_KEY:?set FORGE_X_SECRET_KEY in .env.docker}
+      MYSQL_HOST: db
+      MYSQL_DATABASE: forge_x_db
+      MYSQL_USER: forge_x_app
+      MYSQL_PASSWORD: ${FORGE_X_DB_APP_PASSWORD}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-0}
+      EVIDENCE_MAX_MB: ${EVIDENCE_MAX_MB:-100}
+      EVIDENCE_STORAGE_BACKEND: ${EVIDENCE_STORAGE_BACKEND:-local}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
+      S3_BUCKET: ${S3_BUCKET:-forgex-evidence}
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-}
+    volumes:
+      - evidence-files:/app/instance/evidence_store
+    ports:
+      - "127.0.0.1:${FORGE_X_PUBLISH_PORT:-8000}:8000"
+    networks: [frontend, backend]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+
+  minio:
+    # MinIO stopped publishing its free minio/minio image in October 2025; Chainguard publishes
+    # maintained, free MinIO images (rebuilt for security fixes).
+    profiles: [s3]
+    image: cgr.dev/chainguard/minio:latest
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env.docker}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env.docker}
+    volumes:
+      - minio-data:/data
+    networks: [backend]
+
+  minio-init:
+    # One command, no shell: create the evidence bucket with versioning. New buckets are private;
+    # FORGE-X never sets a public policy. Retries until MinIO is listening, then exits.
+    profiles: [s3]
+    image: cgr.dev/chainguard/minio-client:latest
+    depends_on: [minio]
+    environment:
+      MC_HOST_local: http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@minio:9000
+    command: ["mb", "--ignore-existing", "--with-versioning", "local/${S3_BUCKET:-forgex-evidence}"]
+    networks: [backend]
+    restart: on-failure
+
+networks:
+  frontend: {}
+  backend:
+    internal: true        # no published ports and no outbound route for the database and object store
+
+volumes:
+  mysql-data: {}
+  evidence-files: {}
+  minio-data: {}

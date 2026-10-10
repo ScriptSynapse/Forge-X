@@ -14,11 +14,64 @@ It is a B.Tech Computer Science DBMS academic project. It demonstrates:
 
 All data in the project is synthetic. FORGE-X is a learning project, not a certified forensic tool. It records examination activity; it never runs forensic tools against devices.
 
+## FORGE-X 2.0 at a glance
+
+| Area | What FORGE-X does |
+|---|---|
+| Cases | Registration, investigators, due dates, append-only notes, filters and sorting, custody and activity tabs |
+| Evidence | Metadata and optional **stored files** (write-once, SHA-256 on arrival, local disk or S3/MinIO), verification from storage, audited downloads |
+| Integrity | Reference hashes that are never replaced, verification history, mismatch alerts |
+| Chain of custody | Append-only entries with linked corrections; one log with integrity checks and exports |
+| Examinations | Workflow with **independent review**, artifacts, examination PDF |
+| Reports | Versioned reports, independent approval, PDF |
+| Analysis | YARA scanning in an **isolated worker**; relationship graph from stored links only |
+| Oversight | Dashboard, analytics, global search, full audit log, security view |
+| Integration | Read-only **REST API** with personal tokens and generated OpenAPI |
+| Operations | Docker Compose, GitHub Actions CI, generated stability report |
+
+```mermaid
+flowchart LR
+  U[Browser] -->|HTTPS / localhost| A
+  S[Scripts] -->|Bearer token, /api/v1| A
+  subgraph Docker Compose
+    A[FORGE-X app<br/>Flask + Waitress] --> W[YARA worker<br/>separate process, no secrets]
+    A -->|least-privilege account| D[(MySQL 8<br/>33 tables, 41 triggers,<br/>12 procedures)]
+    A -.optional.-> M[(MinIO / S3<br/>private bucket)]
+    A --> F[(Evidence files<br/>write-once volume)]
+  end
+```
+
+**Quick start with Docker** (details in [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)):
+
+```cmd
+copy .env.docker.example .env.docker          (edit: set every password and the secret key)
+docker compose --env-file .env.docker up -d --build
+docker compose --env-file .env.docker exec app flask --app run create-admin paulson
+```
+
+Then open http://127.0.0.1:8000. For a setup without Docker, see *Setup on Windows* below.
+
+### Screenshots
+
+Screenshots go in `docs/screenshots/`. To capture them, sign in with the demonstration data (`flask --app run seed-mock`) and save these pages:
+
+| File | Page |
+|---|---|
+| `01-login.png` | Login |
+| `02-dashboard.png` | Dashboard |
+| `03-case.png` | A case's overview |
+| `04-evidence.png` | An evidence item with a stored file |
+| `05-custody.png` | Chain of custody log |
+| `06-examination.png` | An examination under review |
+| `07-graph.png` | Relationship graph |
+| `08-yara.png` | A YARA scan result |
+| `09-api-docs.png` | Developer API |
+
 ---
 
 ## Project status
 
-The project is built in 15 phases. This package contains **all 15 phases**.
+The project was built in 15 phases, then upgraded to **FORGE-X 2.0** in 12 more (2.0-0 to 2.0-11). This package contains all of them.
 
 | Phase | Content | Status |
 |---|---|---|
@@ -35,7 +88,7 @@ The project is built in 15 phases. This package contains **all 15 phases**.
 | 11 | Examinations, reports and PDF export | ✅ Verified |
 | 12 | User administration and audit logs | ✅ Verified |
 | 13 | Analytics and global search | ✅ Verified |
-| 14 | Testing review and hardening | 🟡 Written; run the tests below to confirm |
+| 14 | Testing review and hardening | ✅ Verified |
 | 15 | Documentation and final delivery | ✅ Delivered |
 | 2.0-0 | Upgrade audit (`docs/PROJECT_AUDIT.md`, `CURRENT_ARCHITECTURE.md`, `UPGRADE_ROADMAP.md`) | ✅ Delivered |
 | 2.0-1 | Premium UI and dashboard | ✅ Verified |
@@ -47,7 +100,8 @@ The project is built in 15 phases. This package contains **all 15 phases**.
 | 2.0-7 | YARA rule library and evidence scans (YARA-X, isolated worker) | ✅ Verified (YARA tests incl. real YARA-X pass on Windows) |
 | 2.0-8 | Evidence relationship graph | ✅ Verified |
 | 2.0-9 | Optional object storage (MinIO / S3), verified migration | ✅ Verified |
-| 2.0-10 | Read-only REST API v1, personal tokens, OpenAPI | 🟡 Written; run migration 010 and the tests |
+| 2.0-10 | Read-only REST API v1, personal tokens, OpenAPI | ✅ Verified |
+| 2.0-11 | Docker, GitHub Actions CI, final documentation | 🟡 Written; run Docker and push to GitHub to confirm |
 
 **Testing.** The SQL verification (40/40) and the pytest suite have been run on MySQL 8.0.46 during the 15 phases. Run them again after every update (see *Running the tests*); `docs/PROJECT_AUDIT.md` records the latest known results.
 
@@ -86,6 +140,10 @@ Forge-X/
 │   ├── analytics/           Seven SQL analytics charts with their queries shown (/analytics)
 │   ├── dashboard/           Dashboard page and chart JSON endpoints (/api/dashboard/...)
 │   ├── cases/               Case list, create, details (tabs), edit, status, investigators, closure
+│   ├── api/                 FORGE-X 2.0: read-only REST API /api/v1, tokens, OpenAPI, developer pages
+│   ├── graph/               FORGE-X 2.0: relationship graph (/graph)
+│   ├── yara/                FORGE-X 2.0: YARA rule library and scans; worker.py runs isolated
+│   ├── storage/             FORGE-X 2.0: evidence file storage (local, S3/MinIO) and verified migration
 │   ├── evidence/            Evidence registry, register, details (hashes, custody timeline), edit
 │   ├── locations/           Storage locations administration (/admin/locations)
 │   ├── integrity/           Record / verify / correct SHA-256 hashes (sample files are hashed, never stored)
@@ -113,14 +171,23 @@ Forge-X/
 │   ├── app_user.sql         Least-privilege MySQL account (edit password first)
 │   └── migrations/          001 (before Phase 6), 002 (before Phase 9), 003 (case deletion), 004 (case notes, due dates), 005 (evidence files), 006 (Exported custody action), 007 (examination review, artifacts), 008 (YARA), 009 (evidence file locations), 010 (API tokens): run only on older databases
 ├── tests/                   pytest suite
-├── docs/                    User guide, data dictionary, testing, viva guide, Cloudflare hosting
+├── docs/                    Guides, data dictionary, testing, API, object storage, deployment, security, reports
 ├── tools/
 │   ├── fetch_vendor.py      Downloads Bootstrap, icons, Chart.js and fonts locally
-│   └── make_data_dictionary.py  Generates docs/DATA_DICTIONARY.md from schema.sql
-├── .env.example
-├── .gitignore
+│   ├── make_data_dictionary.py  Generates docs/DATA_DICTIONARY.md from schema.sql
+│   ├── build_test_database.py   Builds a separate forge_x_test database script
+│   └── stability_report.py      Runs check-db and pytest, writes docs/CORE_STABILITY_REPORT.md
+├── docker/                  MySQL first-start script and the network app-account script
+├── .github/workflows/ci.yml GitHub Actions: lint, MySQL tests (3.13, 3.14), security scans, Docker smoke test
+├── Dockerfile               App image (non-root, health check)
+├── docker-compose.yml       App, MySQL and optional MinIO on isolated networks
+├── .env.example             Settings for local runs
+├── .env.docker.example      Settings for Docker
+├── .gitignore, .dockerignore
+├── pyproject.toml           Ruff settings
 ├── pytest.ini
 ├── requirements.txt
+├── serve.py                 Production server (Waitress)
 └── run.py
 ```
 
@@ -233,7 +300,7 @@ Open http://127.0.0.1:5000 and log in as `paulson`. You land on the dashboard.
 pytest -v
 ```
 
-**Expect about 324 passed and 43 skipped** (with `yara-x` and `psutil` installed). What each test proves, the security test matrix and a manual acceptance checklist are in **[docs/TESTING.md](docs/TESTING.md)**. The exact split depends on your data.
+**Expect about 330 passed and 43 skipped** (with `yara-x` and `psutil` installed). What each test proves, the security test matrix and a manual acceptance checklist are in **[docs/TESTING.md](docs/TESTING.md)**. The exact split depends on your data.
 
 * 6 tests skip because they check specific demo records, or need an evidence hash to test against. The skip reason says "demo data not installed" or "empty lab".
 * 33 are the opt-in workflow tests described below (including the 12-step end-to-end test).
@@ -618,7 +685,51 @@ set MYSQL_DATABASE=
 | Deleting empty cases | Administrators delete a case registered by mistake, if it has no forensic history (D7). Needs migration 003 on older databases |
 | Locking-read fix | Hash recording/verification and the "keep one administrator" check used locking reads on tables the app account can't lock (MySQL error 1142). Fixed, and a test now checks every locking read against the grants (D8) |
 
+## Environment variables
+
+Set in `.env` (local runs) or `.env.docker` (Docker). Never commit either file.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `FORGE_X_SECRET_KEY` | (required) | Signs sessions; 32+ random characters. Placeholders are refused |
+| `MYSQL_HOST`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD` | localhost, forge_x_db, forge_x_app, (required) | Database connection. The app refuses to run as `root` |
+| `DB_TIME_ZONE` | `+05:30` | Lab time zone (D1); also the offset in API times |
+| `FLASK_DEBUG` | 0 | Never 1 when others can reach the app |
+| `SESSION_COOKIE_SECURE` | 0 | 1 when served over HTTPS |
+| `TRUST_CLOUDFLARE` | 0 | 1 only behind Cloudflare Tunnel with `FORGE_X_HOST=127.0.0.1` |
+| `FORGE_X_HOST`, `FORGE_X_PORT` | 127.0.0.1, 8000 | Where `serve.py` listens |
+| `EVIDENCE_STORAGE_DIR` | `instance/evidence_store` | Stored evidence files (local backend) |
+| `EVIDENCE_MAX_MB` | 100 | Largest evidence file |
+| `EVIDENCE_STORAGE_BACKEND` | local | `local` or `s3` for new files |
+| `S3_ENDPOINT_URL`, `S3_BUCKET`, `S3_PREFIX`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_SSE`, `S3_CONDITIONAL_WRITES`, `S3_VERIFY_TLS` | | Object storage ([docs/OBJECT_STORAGE.md](docs/OBJECT_STORAGE.md)) |
+| `YARA_TIMEOUT_SECONDS`, `YARA_MEMORY_MB`, `YARA_MAX_RULE_KB` | 60, 512, 256 | YARA worker limits |
+| `API_RATE_LIMIT_PER_MINUTE`, `API_FAILED_AUTH_PER_MINUTE` | 120, 20 | API rate limits |
+
+Docker uses its own names for the database passwords (`FORGE_X_DB_ROOT_PASSWORD`, `FORGE_X_DB_APP_PASSWORD`); see `.env.docker.example`.
+
+## Database migrations
+
+A fresh install (`database/install_all.sql`, or Docker's first start) already includes everything. On a database built earlier, run the missing migrations **once each, in order, as root**. `flask --app run check-db` names any that are missing.
+
+| Migration | Adds |
+|---|---|
+| 001, 002 | Session versions; storage-location auditing (original phases) |
+| 003 | Deleting empty cases |
+| 004 | Case notes, due dates |
+| 005 | Stored evidence files |
+| 006 | *Exported* custody action |
+| 007 | Examination review, artifacts |
+| 008 | YARA |
+| 009 | Evidence file locations (object storage) |
+| 010 | API tokens |
+
+Every migration is additive: no data is dropped, and append-only history is never rewritten.
+
 ## Documentation
+
+* [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md): Docker, Windows and hosting; backups; upgrades
+* [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md): threats, controls, evidence and known limitations
+* [docs/FINAL_IMPLEMENTATION_REPORT.md](docs/FINAL_IMPLEMENTATION_REPORT.md): what was built, how it was verified, what remains
 
 | Document | Contents |
 |---|---|
@@ -721,6 +832,7 @@ To return to the single-administrator lab, run `install_all.sql` and `create-adm
 | U4 | No case archiving: closing stays final (D3) |
 | U5 | Case notes are append-only with linked corrections; cases have an optional due date (migration 004) |
 | U8 | API times are ISO 8601 with the lab offset (+05:30) |
+| D12 | Docker: database and object store only on an internal network; app published on 127.0.0.1; CI never deploys and only uses throwaway databases |
 | D11 | API v1 read-only; personal tokens (SHA-256 stored, at most 90 days, revocable); responses from fixed field lists; OpenAPI generated from the routes |
 | D10 | Object storage optional (local stays default); file locations append-only; migrations verified before and after and never delete the source |
 | D9 | YARA via YARA-X (not yara-python): official successor, installs on Python 3.14 on Windows; all YARA work in an isolated worker process |
@@ -747,6 +859,10 @@ To return to the single-administrator lab, run `install_all.sql` and `create-adm
 | Tests show "skipped" | Read the skip reason. Usually MySQL isn't running or `.env` is incomplete |
 
 ---
+
+## Licence
+
+**The project's own licence hasn't been chosen yet.** Until one is added, the default applies: all rights reserved by the authors. Add a `LICENSE` file (for example MIT) when you decide.
 
 ## Licences of bundled libraries
 

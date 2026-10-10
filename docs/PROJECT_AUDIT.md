@@ -386,3 +386,15 @@ Decision **U8 = ISO 8601 with the lab offset** (my recommendation; not explicitl
 **Migration 010** adds `api_tokens` (INSERT and UPDATE only, never DELETE) and the audit entity type *API token*.
 
 **Sandbox note:** my sandbox was reset during this phase. I rebuilt the stand-ins for Flask-WTF, WTForms, the MySQL driver and pytest, and reran every test file: 151 offline tests pass; the 2 CSRF tests still need the real Flask-WTF. One file, `.gitignore`, had been lost from the working copy and was restored from the last delivered package.
+
+## Phase 11 progress (FORGE-X 2.0)
+
+| Plan item | Status |
+|---|---|
+| Docker: app, MySQL, optional object storage, optional worker | Done: `Dockerfile`, `docker-compose.yml` (MinIO via Chainguard's maintained images under `--profile s3`). The YARA worker needs no separate service: it is a restricted child process |
+| Persistent volumes, environment variables, health checks, network isolation; database not public | Done: named volumes; required secrets; health checks (the database's logs in as the app account); internal `backend` network; app on 127.0.0.1 only |
+| CI: dependencies, lint and format, tests, build validation, security checks | Done: `.github/workflows/ci.yml` (ruff, MySQL tests on 3.13 and 3.14 with every write test, `pip-audit` and `bandit`, Docker build and smoke test) |
+| No automatic deployment; no destructive migrations | Done: CI only uses throwaway databases and never deploys (checked by `test_deploy`); migrations are applied deliberately (`DEPLOYMENT_GUIDE.md`) |
+| README sections, deployment guide, security review, final report | Done |
+
+**Audit finding #11 (no Docker or CI) closed.** Docker and CI are unverified until their first run on your machine and on GitHub.

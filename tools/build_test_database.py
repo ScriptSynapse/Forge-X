@@ -33,6 +33,7 @@ def build(name="forge_x_test"):
     grants = [line for line in (DB / "app_user.sql").read_text(encoding="utf-8").splitlines()
               if line.startswith("GRANT ") and f"{REAL}." in line and "forge_x_app_role" in line]
     parts.append("\n-- ===== grants for the application role on the test database =====\n"
+                 "CREATE ROLE IF NOT EXISTS 'forge_x_app_role';\n"
                  + "\n".join(re.sub(rf"\b{REAL}\b", name, g) for g in grants) + "\n")
     parts.append("\n-- ===== verify.sql =====\n" + re.sub(rf"\b{REAL}\b", name, (DB / "verify.sql").read_text(encoding="utf-8")))
     sql = "".join(parts)

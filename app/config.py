@@ -7,7 +7,8 @@ never application records: those live in MySQL.
 import os
 from datetime import timedelta
 
-PLACEHOLDER_SECRETS = {"", "replace-with-64-hex-characters", "change-me", "dev"}
+PLACEHOLDER_SECRETS = {"", "replace-with-64-hex-characters", "change-me", "dev",
+                       "change-me-to-64-random-hex-characters"}       # the .env.docker.example placeholder
 
 
 def _bool(name, default=False):

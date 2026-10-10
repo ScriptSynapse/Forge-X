@@ -1,0 +1,10 @@
+# Tool settings only (FORGE-X is run from the folder, not installed as a package).
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+extend-exclude = ["app/static", "instance", "database", "docs"]
+
+[tool.ruff.lint]
+# CI blocks on E9/F63/F7/F82 (syntax errors, undefined names); everything else is advisory.
+select = ["E", "F", "W", "B", "S"]
+ignore = ["S101", "S311", "E501"]

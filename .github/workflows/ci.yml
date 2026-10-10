@@ -1,0 +1,141 @@
+# FORGE-X continuous integration (FORGE-X 2.0 Phase 11).
+# Checks only: nothing is deployed, and every database it touches is a throwaway
+# created inside the job. No secrets are needed (all passwords are generated per run).
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint and format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - run: pip install ruff
+      - name: Errors that must never ship (syntax errors, undefined names)
+        run: ruff check --select E9,F63,F7,F82 --output-format=github .
+      - name: Full lint (advisory)
+        continue-on-error: true
+        run: ruff check --output-format=github .
+      - name: Formatting (advisory)
+        continue-on-error: true
+        run: ruff format --check --diff .
+
+  test:
+    name: Tests on MySQL (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.13", "3.14"]
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root-password
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pci-root-password"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    env:
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_DATABASE: forge_x_test
+      MYSQL_USER: forge_x_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Compile everything
+        run: python -m compileall -q app tools tests serve.py run.py
+      - name: Generate per-run secrets
+        run: |
+          echo "FORGE_X_SECRET_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')" >> "$GITHUB_ENV"
+          PW="ci_$(python -c 'import secrets; print(secrets.token_hex(16))')"
+          echo "::add-mask::$PW"
+          echo "MYSQL_PASSWORD=$PW" >> "$GITHUB_ENV"
+      - name: Build the test database and the least-privilege app account
+        run: |
+          python tools/build_test_database.py forge_x_test
+          mysql -h 127.0.0.1 -uroot -pci-root-password --default-character-set=utf8mb4 --table < database/build/install_forge_x_test.sql
+          sh docker/app-user.sh forge_x_test '%' "$MYSQL_PASSWORD" database/app_user.sql \
+            | mysql -h 127.0.0.1 -uroot -pci-root-password
+      - name: Create the first administrator
+        run: |
+          ADMIN_PW="Ci-Admin-$(python -c 'import secrets; print(secrets.token_hex(8))')-2026!"
+          printf '%s\n%s\n' "$ADMIN_PW" "$ADMIN_PW" \
+            | flask --app run create-admin ci_admin --name "CI Administrator" --email ci-admin@example.test
+      - name: Full test suite and stability report (all write tests included)
+        run: python tools/stability_report.py --with-write-tests
+      - name: Upload the stability report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stability-report-py${{ matrix.python }}
+          path: |
+            docs/CORE_STABILITY_REPORT.md
+            build/pytest-results.xml
+
+  security:
+    name: Security checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - run: pip install pip-audit bandit
+      - name: Known vulnerabilities in dependencies
+        run: pip-audit -r requirements.txt
+      - name: Static analysis (advisory; SQL composition is covered by tests/test_security.py)
+        continue-on-error: true
+        run: bandit -r app -ll -f txt -o bandit.txt; cat bandit.txt
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: bandit-report, path: bandit.txt, if-no-files-found: ignore }
+
+  docker:
+    name: Docker build and smoke test
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate .env.docker with per-run secrets
+        run: |
+          rnd() { python3 -c 'import secrets; print(secrets.token_hex(16))'; }
+          {
+            echo "FORGE_X_SECRET_KEY=$(rnd)$(rnd)"
+            echo "FORGE_X_DB_ROOT_PASSWORD=root_$(rnd)"
+            echo "FORGE_X_DB_APP_PASSWORD=app_$(rnd)"
+            echo "FORGE_X_PUBLISH_PORT=8000"
+          } > .env.docker
+      - name: Validate the Compose file
+        run: docker compose --env-file .env.docker config --quiet
+      - name: Build and start (waits for every health check)
+        run: docker compose --env-file .env.docker up -d --build --wait --wait-timeout 300
+      - name: Health and database checks
+        run: |
+          curl -fsS http://127.0.0.1:8000/healthz
+          docker compose --env-file .env.docker exec -T app flask --app run check-db
+      - name: The database is not reachable from the host
+        run: "! (timeout 3 bash -c '</dev/tcp/127.0.0.1/3306')"
+      - name: Logs on failure
+        if: failure()
+        run: docker compose --env-file .env.docker logs --no-color
+      - name: Tear down
+        if: always()
+        run: docker compose --env-file .env.docker down -v

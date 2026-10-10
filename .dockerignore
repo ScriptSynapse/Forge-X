@@ -1,0 +1,16 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+!.env.docker.example
+.venv
+venv
+instance
+build
+database/build
+**/__pycache__
+**/*.pyc
+.pytest_cache
+app/static/vendor
+docs

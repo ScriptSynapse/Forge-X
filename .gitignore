@@ -22,3 +22,6 @@ Thumbs.db
 # Generated SQL (tools/build_test_database.py) and reports
 database/build/
 build/
+
+# Docker secrets
+.env.docker

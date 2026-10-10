@@ -142,4 +142,4 @@ Four roles. A user can hold several; their permissions are the union.
 
 ## 8. Deployment
 
-Windows 10/11 with the MySQL 8.0 service; Python virtual environment; `.env` for secrets. There's no Docker and no CI. Optional public access is through Cloudflare Tunnel, with `TRUST_CLOUDFLARE=1` and the app listening only on 127.0.0.1.
+Windows 10/11 with the MySQL 8.0 service, a Python virtual environment and `.env` for secrets; **or Docker Compose** (app, MySQL and optional MinIO on isolated networks). GitHub Actions runs lint, the full test suite on MySQL, security scans and a Docker smoke test. See `docs/DEPLOYMENT_GUIDE.md`. Optional public access is through Cloudflare Tunnel, with `TRUST_CLOUDFLARE=1` and the app listening only on 127.0.0.1.

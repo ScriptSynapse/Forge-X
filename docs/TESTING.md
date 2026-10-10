@@ -1,6 +1,6 @@
 # FORGE-X: Testing and Quality Review
 
-This document explains how FORGE-X is tested, what each test proves, and what the Phase 14 review found and fixed. FORGE-X has **368 automated tests**, a **40-check SQL verification script**, and the manual acceptance checklist in section 5.
+This document explains how FORGE-X is tested, what each test proves, and what the Phase 14 review found and fixed. FORGE-X has **374 automated tests**, a **40-check SQL verification script**, and the manual acceptance checklist in section 5.
 
 ---
 
@@ -11,7 +11,7 @@ Run everything from the project folder in Command Prompt, with `.venv` active.
 | What | Command | Expected result |
 |---|---|---|
 | Configuration and database connection | `flask --app run check-db` | `All checks passed.` |
-| All automated tests | `pytest -v` | About **324 passed, 43 skipped**; the exact split depends on your data |
+| All automated tests | `pytest -v` | About **330 passed, 43 skipped**; the exact split depends on your data |
 | Database build verification | runs automatically at the end of `install_all.sql` | `failed 0` |
 | Full SQL suite (needs the demo data) | runs automatically at the end of `install_demo.sql` | **40 / 40 PASS** |
 
@@ -67,7 +67,8 @@ For the full run with `--with-write-tests`, build a separate database with `pyth
 | 2.0 Phase 8: relationship graph | `test_graph.py` (11: node cap and links, malformed ids never reach the database, every query parameterised and scoped, template and script agree, layout and merge logic run in Node.js) | `test_graph_db.py` (2: real case graph consistent; investigators can't graph unassigned cases) | |
 | 2.0 Phase 9: object storage | `test_storage_s3.py` (9: S3 write-once, hashing, limits, temporary scan copies, public-bucket check, setting validation, verified migration that never deletes the source or keeps a bad copy; plus a real MinIO/S3 round trip with `FORGE_X_S3_TESTS=1`) | `test_evidence_files_db.py` (+1: migration 009), `test_data_consistency_db.py` (+1: every move verified; files checked on their own backend) | |
 | 2.0 Phase 10: REST API | `test_api.py` (21: tokens and their hashes, bad and unknown credentials, inactive accounts, failed-attempt and per-user rate limits, caller's scope, 404 for invisible records, field allowlists, ISO times with offset, malformed tokens never reach the database, OpenAPI equals the routes, GET only) | `test_api_db.py` (8: migration, list totals equal SQL, details, investigator scope) | `test_api_write_db.py` (1: create, use, revoke, audit) |
-| **Total: 368** | **156** | **177** | **35** |
+| 2.0 Phase 11: deployment | `test_deploy.py` (6: database and object store never published, locked-down app container, secrets required and never in the image, example secrets refused, network app account equals `app_user.sql`, CI never deploys) | | |
+| **Total: 374** | **162** | **177** | **35** |
 
 **How the three kinds of test work:**
 * **Offline tests** need no database. They cover rules, permissions, input parsing, hashing, PDF generation, security headers and the protection of every route.
@@ -103,6 +104,7 @@ For the full run with `--with-write-tests`, build a separate database with `pyth
 | Graph leaking other cases | Every graph query scoped; node expansion re-checks visibility; shared-hash holders filtered by scope | `test_graph`, `test_graph_db`; Phase 8 page checks |
 | Evidence lost or altered in a storage move | Hash before and after every copy, CHECK on the location row, source never deleted | `test_storage_s3::test_migration_*`; `test_data_consistency_db::test_every_storage_move_was_verified` |
 | API leaking data or accepting stolen tokens | Fixed field lists; case scope; tokens hashed, expiring, revocable; failed-attempt limit; 404 never distinguishes hidden from missing | `test_api` (allowlists, scope, limits, malformed tokens), `test_api_db` (scope on real data), `test_api_write_db` (revocation) |
+| Database exposed by the Docker setup | Internal network, no published ports; app on 127.0.0.1; non-root, read-only app container | `test_deploy`; CI Docker job checks port 3306 is closed |
 | Public exposure of the bucket | No public or presigned URLs; `check-db` fails on a public bucket policy | `test_storage_s3::test_s3_health_reports_public_or_missing_buckets` |
 | Evidence file tampering | Re-hash from storage; the trusted hash is never replaced | `test_storage::test_tampering_on_disk_is_detected_by_rehashing`; `test_evidence_files_write_db` |
 | Spreadsheet formula injection | CSV cells starting with `= + - @` are prefixed | `test_audit::test_csv_cells_cannot_become_formulas` |

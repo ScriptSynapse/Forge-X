@@ -156,7 +156,7 @@ Migrations continue the existing numbering (001–003 exist), run as root, and a
 
 ## Phase 10: REST API
 
-**Status: implemented (read-only v1; migration 010), waiting for your test run and approval.** See `docs/API.md` and `docs/PROJECT_AUDIT.md` → *Phase 10 progress*.
+**Status: ✅ verified.**
 
 * `/api/v1/...` on top of the **existing services**, so the rules aren't written twice.
 * Session auth for the browser, plus personal API tokens (hashed in MySQL, migration 011) for scripts.
@@ -165,6 +165,8 @@ Migrations continue the existing numbering (001–003 exist), run as root, and a
 * Every documented endpoint has authorised and unauthorised tests.
 
 ## Phase 11: Deployment, CI and documentation
+
+**Status: implemented; Docker and CI to be confirmed on first run.** See `docs/DEPLOYMENT_GUIDE.md` and `docs/FINAL_IMPLEMENTATION_REPORT.md`.
 
 * **Docker Compose:** the app (Waitress), MySQL 8 (not published to the host by default), optional MinIO and the optional YARA worker. Named volumes and health checks.
 * **GitHub Actions:**

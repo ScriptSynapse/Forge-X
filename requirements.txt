@@ -9,3 +9,4 @@ pytest>=8.0,<9.0
 yara-x>=1.0          # YARA scanning (Phase 7); runs only in the isolated worker process
 psutil>=5.9          # memory watchdog for the YARA worker (needed on Windows)
 boto3>=1.35          # optional object storage (Phase 9): only used when EVIDENCE_STORAGE_BACKEND=s3 or migrating
+PyYAML>=6.0           # tests: checks docker-compose.yml and the CI workflow (tests/test_deploy.py)

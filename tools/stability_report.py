@@ -41,6 +41,7 @@ AREAS = [   # (label, test-file prefixes)
     ("YARA scanning (Phase 7)", ("test_yara",)),
     ("Relationship graph (Phase 8)", ("test_graph",)),
     ("REST API (Phase 10)", ("test_api",)),
+    ("Deployment and CI (Phase 11)", ("test_deploy",)),
     ("End-to-end core workflow", ("test_core_workflow",)),
 ]
 
